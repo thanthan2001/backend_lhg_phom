@@ -38,7 +38,7 @@ exports.login = async (companyname, userID, pwd) => {
   try {
     const results = await db.Execute(
       companyname,
-      `SELECT * FROM [dbo].[BUsers] WHERE USERID = '${userID}'`
+      `SELECT * FROM [dbo].[BUsers] WHERE USERID = '${userID}' aND PWD = '${pwd}'`
     );
     if (!results || !results.jsonArray || results.jsonArray.length === 0) {
       return {
@@ -68,7 +68,7 @@ exports.getInfoUserbyID = async (companyname, userID) => {
   try {
     const results = db.Execute(
       companyname,
-      `SLECT * FROM [dbo].[BUsers] where USERID = '${userID}'`
+      `SELECT * FROM [dbo].[BUsers] where USERID = '${userID}'`
     );
     if (!results || !results.jsonArray) {
       console.warn("Không có dữ liệu hoặc jsonArray trả về từ cơ sở dữ liệu.");
