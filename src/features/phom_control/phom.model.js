@@ -204,3 +204,61 @@ exports.bindingPhom = async (
     };
   }
 };
+
+exports.ScanPhomMuonTra = async (companyname, RFID) => {
+  try {
+    // Kiểm tra xem RFID đã tồn tại trong bảng hay chưa
+    const results = await db.Execute(
+      companyname,
+      `SELECT * FROM Last_Data_Scan_Temp WHERE RFID = '${RFID}'`
+    );
+
+    if (results.rowCount === 0) {
+      // Không có dữ liệu RFID => INSERT mới
+      await db.Execute(
+        companyname,
+        `INSERT INTO Last_Data_Scan_Temp (RFID, isOutScan, DateIn, DateOut)
+         VALUES ('${RFID}', 1, '1900-01-01', GETDATE())`
+      );
+
+      return {
+        status: "Success",
+        statusCode: 200,
+        message: "Đã thêm dữ liệu mới với isOutScan = 1.",
+      };
+    } else {
+      console.log("results", results);
+      // Có dữ liệu => kiểm tra isOutScan
+      const isOutScan = results.jsonArray[0].isOutScan;
+
+      if (isOutScan === 1 || isOutScan === true) {
+        // Nếu đang ở trạng thái isOutScan = 1 thì cập nhật lại
+        await db.Execute(
+          companyname,
+          `UPDATE Last_Data_Scan_Temp
+           SET isOutScan = 0, DateIn = GETDATE()
+           WHERE RFID = '${RFID}'`
+        );
+
+        return {
+          status: "Updated",
+          statusCode: 200,
+          message: "Đã cập nhật isOutScan = 0 và DateIn = GETDATE().",
+        };
+      } else {
+        return {
+          status: "NoAction",
+          statusCode: 200,
+          message: "RFID đã tồn tại và isOutScan = 0, không cần cập nhật.",
+        };
+      }
+    }
+  } catch (error) {
+    console.error("Lỗi khi xử lý RFID:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      message: "Đã xảy ra lỗi khi xử lý RFID.",
+    };
+  }
+};

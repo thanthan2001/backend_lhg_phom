@@ -6,5 +6,6 @@ router.post("/getAllPhom", phomRoute.getAllPhom);
 router.post("/getPhomByLastMatNo", phomRoute.getPhomByLastMatNo);
 router.post("/searchPhomBinding", phomRoute.searchPhomBinding);
 router.post("/bindingPhom", phomRoute.bindingPhom);
+router.post("/scanouttemp", phomRoute.ScanPhomMuonTra);
 
 module.exports = router;
