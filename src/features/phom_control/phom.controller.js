@@ -24,6 +24,17 @@ exports.getPhomByLastMatNo = async (req, res) => {
     res.status(200).json(result);
   }
 };
+exports.getSizeByLastMatNo = async(req,res)=>{
+  const companyName = req.body.companyName;
+  const LastMatNo = req.body.LastMatNo;
+   const result = await phomModel.getSizeByLastMatNo(companyName, LastMatNo);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
 
 exports.searchPhomBinding = async (req, res) => {
   const companyName = req.body.companyName;
@@ -89,3 +100,15 @@ exports.ScanPhomMuonTra = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
+exports.TaoPhieuMuonPhom = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.TaoPhieuMuonPhom(companyName,payload);
+    if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}

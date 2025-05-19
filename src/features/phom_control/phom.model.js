@@ -77,6 +77,29 @@ exports.getPhomByLastMatNo = async (companyname, LastMatNo) => {
   }
 };
 
+exports.getSizeByLastMatNo = async (companyname, LastMatNo) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `select DISTINCT LastSize from LastNoD where LastMatNo= '${LastMatNo}' ORDER BY LastSize DESC`
+    );
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: results,
+      message: "Lấy Size thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi lấy Size:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy Size.",
+    };
+  }
+};
+
 exports.searchPhomBinding = async (companyname, MaVatTu, TenPhom, SizePhom) => {
   try {
     const results = await db.Execute(
@@ -262,3 +285,74 @@ exports.ScanPhomMuonTra = async (companyname, RFID) => {
     };
   }
 };
+
+exports.TaoPhieuMuonPhom = async(companyname, payload) => {
+    try {
+      // Tạo Đơn Mượn
+      const TaoPhieuMuon = await db.Execute(companyname,
+        `EXEC Insert_Last_Data_Bill
+          @Userid = '${payload.UserID}',
+          @DepID = '${payload.DepID}',
+          @DateBorrow = '${payload.DateBorrow}',
+          @DateReceive = '${payload.DateReceive}',
+          @LastMatNo = '${payload.LastMatNo}',
+          @isConfirm = 0,
+          @StateLastBill = 0;`
+      );
+      const GetPhieuMuon = await db.Execute(companyname,
+        `select * from Last_Data_Bill where DepID='${payload.DepID}' and 
+        DateBorrow='${payload.DateBorrow}' and DateReceive='${payload.DateReceive}' and LastMatNo='${payload.LastMatNo}'`
+      );
+      console.log("GetPhieuMuon", GetPhieuMuon);
+      if (GetPhieuMuon.rowCount === 0) {
+        return {
+          status: "Error",
+          statusCode: 400,
+          data: [],
+          message: "Không tìm thấy phiếu mượn.",
+        };
+      }
+      else{
+        const ID_Bill = GetPhieuMuon.jsonArray[0].ID_bill;
+        console.log("ID_Bill", ID_Bill);
+        if (ID_Bill === null || ID_Bill === undefined) {
+          return {
+            status: "Error",
+            statusCode: 400,
+            data: [],
+            message: "Không tìm thấy ID_Bill.",
+          };
+        }
+        else{
+          // Tạo Đơn Mượn Chi Tiết
+         for (const item of payload.Details) {
+            const TaoPhieuMuonCT = await db.Execute(companyname,
+              `EXEC Insert_Detail_Last_Data_Bill
+                @ID_bill = '${ID_Bill}',
+                @DepID = '${payload.DepID}',
+                @LastMatNo = '${payload.LastMatNo}',
+                @LastName = N'${item.LastName}',  -- dùng N'' nếu có tiếng Việt
+                @LastSize = '${item.LastSize}',
+                @LastSum = ${item.LastSum};`
+            );
+          }
+        }
+        const results = await db.Execute(companyname,'select * from Last_Data_Bill');
+        console.log(results);
+        return {
+          status: "Success",
+          statusCode: 200,
+          data: GetPhieuMuon.jsonArray,
+          message: "Tạo phiếu mượn thành công.",
+        }
+      }
+    } catch (error) {
+      console.error("Lỗi khi tạo phiếu mượn:", error);
+      return {
+        status: "Error",
+        statusCode: 500,
+        data: [],
+        message: "Lỗi khi tạo phiếu mượn.",
+      };
+    }
+}
