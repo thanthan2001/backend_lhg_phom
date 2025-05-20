@@ -35,7 +35,16 @@ exports.getSizeByLastMatNo = async(req,res)=>{
     res.status(200).json(result);
   }
 }
-
+exports.getDepartment= async (req, res) => {
+  const companyName = req.body.companyName;
+  const result = await phomModel.getDepartment(companyName);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
 exports.searchPhomBinding = async (req, res) => {
   const companyName = req.body.companyName;
   const MaVatTu = req.body.MaVatTu;

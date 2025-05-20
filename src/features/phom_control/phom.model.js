@@ -99,7 +99,29 @@ exports.getSizeByLastMatNo = async (companyname, LastMatNo) => {
     };
   }
 };
+exports.getDepartment = async (companyname) => {
 
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT ID FROM BDepartment`
+    );
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: results,
+      message: "Lấy tên phòng ban thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi lấy tên phòng ban:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy tên phòng ban.",
+    };
+  }
+}
 exports.searchPhomBinding = async (companyname, MaVatTu, TenPhom, SizePhom) => {
   try {
     const results = await db.Execute(
@@ -303,7 +325,6 @@ exports.TaoPhieuMuonPhom = async(companyname, payload) => {
         `select * from Last_Data_Bill where DepID='${payload.DepID}' and 
         DateBorrow='${payload.DateBorrow}' and DateReceive='${payload.DateReceive}' and LastMatNo='${payload.LastMatNo}'`
       );
-      console.log("GetPhieuMuon", GetPhieuMuon);
       if (GetPhieuMuon.rowCount === 0) {
         return {
           status: "Error",
@@ -314,7 +335,6 @@ exports.TaoPhieuMuonPhom = async(companyname, payload) => {
       }
       else{
         const ID_Bill = GetPhieuMuon.jsonArray[0].ID_bill;
-        console.log("ID_Bill", ID_Bill);
         if (ID_Bill === null || ID_Bill === undefined) {
           return {
             status: "Error",
@@ -337,13 +357,14 @@ exports.TaoPhieuMuonPhom = async(companyname, payload) => {
             );
           }
         }
-        const results = await db.Execute(companyname,'select * from Last_Data_Bill');
-        console.log(results);
-        return {
+        const results = await db.Execute(companyname, `select * from Last_Data_Bill where ID_bill = '${ID_Bill}'`);
+        if (results.rowCount !== 0 && results.jsonArray.length > 0) {
+         return{
           status: "Success",
           statusCode: 200,
-          data: GetPhieuMuon.jsonArray,
+          data: results.jsonArray,
           message: "Tạo phiếu mượn thành công.",
+         }
         }
       }
     } catch (error) {
