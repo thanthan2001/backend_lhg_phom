@@ -159,7 +159,7 @@ exports.getDepartment = async (companyname) => {
   try {
     const results = await db.Execute(
       companyname,
-      `SELECT ID FROM BDepartment`
+      `SELECT ID,DepName FROM BDepartment`
     );
     return {
       status: "Success",
