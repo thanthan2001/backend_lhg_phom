@@ -8,23 +8,17 @@ exports.getAllPhom = async (companyname) => {
     const results = await db.Execute(
       companyname,
       `SELECT 
-    sub.LastMatNo,
-    lnm.LastName,
-    lnm.LastType,
-    lnm.LastBrand,
-    lnm.Material,
-    sub.LastSize,
-    sub.TotalQty AS LastQty
-FROM (
-    SELECT 
-        LastMatNo,
-        LastSize,
-        SUM(LastQty) AS TotalQty
-    FROM LastNoD
-    --WHERE LastMatNo = 'V401000026' AND LastSize = '06.0'
-    GROUP BY LastMatNo, LastSize
-) sub
-JOIN LastNoM lnm ON lnm.LastMatNo = sub.LastMatNo`
+    LastMatNo,
+    LastName,
+    LastType,
+    Material,
+    LastSize,
+    COUNT(CASE WHEN isOut IS NULL OR isOut <> 1 THEN 1 END) AS SoLuongTonKho
+FROM 
+    Last_Data_Binding
+	where LastMatNo='${LastMatNo}'
+GROUP BY 
+    LastMatNo, LastName, LastType, Material, LastSize;`
     );
 
     if (!results || !results.jsonArray) {
@@ -39,7 +33,7 @@ JOIN LastNoM lnm ON lnm.LastMatNo = sub.LastMatNo`
     const payload = {
       status: "Success",
       statusCode: 200,
-      data: results.jsonArray,
+      data: results,
       message: "Lấy tất cả phom thành công",
     };
     return payload;
@@ -53,11 +47,62 @@ JOIN LastNoM lnm ON lnm.LastMatNo = sub.LastMatNo`
     };
   }
 };
+exports.saveBill = async (companyName, payload) => {
+
+  const checkRFIDExists = await db.Execute(
+    companyName,
+    `SELECT * FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}'`
+  );
+  if (checkRFIDExists && checkRFIDExists.jsonArray.length > 0) {
+    return {
+      status: "Tồn Tại",
+      statusCode: 204,
+      data: [],
+      message: "RFID đã tồn tại trong hệ thống.",
+    };
+  }
+
+  const result = await db.Execute(
+    companyName, `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan )
+    values ('${payload.ID_BILL}', '${payload.DepID}', '${payload.RFID}', '${payload.ScanDate}', '${payload.StateScan}')`
+  );
+  const checkInsert = await db.Execute(
+    companyName, `SELECT * FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}  '`
+  )
+  if (checkInsert.rowCount === 0) {
+    return {
+      status: "Error",
+      statusCode: 400,
+      data: [],
+      message: "Lưu bill thất bại.",
+    };
+  }
+  else{
+    return{
+      status: "Success",
+      statusCode: 200,
+      data: checkInsert,
+      message: "Lưu bill thành công.",
+    };
+  }
+};
+
 exports.getInfoPhom=async(companyname,LastMatNo)=> {
   try {
     const results = await db.Execute(
       companyname,
-      `SELECT * FROM Last_Data_Binding WHERE LastMatNo = '${LastMatNo}'`
+     `SELECT 
+    LastMatNo,
+    LastName,
+    LastType,
+    Material,
+    LastSize,
+    COUNT(CASE WHEN isOut IS NULL OR isOut <> 1 THEN 1 END) AS SoLuongTonKho
+FROM 
+    Last_Data_Binding
+	where LastMatNo='${LastMatNo}'
+GROUP BY 
+    LastMatNo, LastName, LastType, Material, LastSize;`
     );
     if (results.rowCount === 0) {
       return {

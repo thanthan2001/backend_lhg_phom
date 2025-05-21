@@ -4,7 +4,8 @@ const phomModel = require("./phom.model");
 
 exports.getAllPhom = async (req, res) => {
   const companyName = req.body.companyName;
-  const result = await phomModel.getAllPhom(companyName);
+  const LastMatNo = req.body.LastMatNo;
+  const result = await phomModel.getAllPhom(companyName,LastMatNo);
   if (!result) {
     res.status(500).json("No phom found");
   } else {
@@ -12,6 +13,17 @@ exports.getAllPhom = async (req, res) => {
     res.status(200).json(result);
   }
 };
+exports.getInforPhomBinding = async (req, res) => {
+
+  const companyName = req.body.companyName;
+  const result = await phomModel.getInforPhomBinding(companyName);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
 exports.getInfoPhom = async (req, res) => {
   const companyName = req.body.companyName;
   const RFID = req.body.LastMatNo;
@@ -170,6 +182,18 @@ exports.getRFIDPhom = async (req,res)=>{
   const payload = req.body;
   const companyName = payload.companyName;
   const result = await phomModel.getRFIDPhom(companyName,payload);
+    if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+
+exports.saveBill = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.saveBill(companyName,payload);
     if (!result) {
     res.status(500).json("No phom found");
   } else {
