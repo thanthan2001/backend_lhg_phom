@@ -12,7 +12,16 @@ exports.getAllPhom = async (req, res) => {
     res.status(200).json(result);
   }
 };
-
+exports.getLastMatNo = async (req, res) => {
+  const companyName = req.body.companyName;
+  const result = await phomModel.getLastMatNo(companyName);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
 exports.getPhomByLastMatNo = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
@@ -114,6 +123,42 @@ exports.TaoPhieuMuonPhom = async (req,res)=>{
   const payload = req.body;
   const companyName = payload.companyName;
   const result = await phomModel.TaoPhieuMuonPhom(companyName,payload);
+    if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+
+exports.LayPhieuMuonPhom = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.LayPhieuMuonPhom(companyName,payload);
+    if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+
+exports.TimPhomRFID = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.TimPhomRFID(companyName,payload);
+    if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+
+exports.getRFIDPhom = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.getRFIDPhom(companyName,payload);
     if (!result) {
     res.status(500).json("No phom found");
   } else {
