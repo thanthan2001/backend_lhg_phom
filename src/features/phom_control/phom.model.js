@@ -53,6 +53,39 @@ JOIN LastNoM lnm ON lnm.LastMatNo = sub.LastMatNo`
     };
   }
 };
+exports.getInfoPhom=async(companyname,LastMatNo)=> {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT * FROM Last_Data_Binding WHERE LastMatNo = '${LastMatNo}'`
+    );
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 200,
+        data: [],
+        message: "Không có phom nào",
+      };
+    } else {
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: results,
+        message: "Lấy phom thành công.",
+      };
+    }
+    
+  } catch (error) {
+    console.error("Lỗi khi lấy thông tin phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy thông tin phom.",
+    };
+    
+  }
+};
 exports.getLastMatNo = async (companyname) => {
   try {
     const results = await db.Execute(

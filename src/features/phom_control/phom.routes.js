@@ -12,8 +12,8 @@ router.post("/bindingPhom", phomRoute.bindingPhom);
 router.post("/scanouttemp", phomRoute.ScanPhomMuonTra);
 router.post("/submit_borrow", phomRoute.TaoPhieuMuonPhom);
 router.post('/layphieumuon', phomRoute.LayPhieuMuonPhom);
-
 router.post('/getphomrfid', phomRoute.TimPhomRFID);
-router.post('/getRFIDphom', phomRoute.getRFIDPhom);
+router.post('/getInfoPhom', phomRoute.getInfoPhom);
+
 
 module.exports = router;
