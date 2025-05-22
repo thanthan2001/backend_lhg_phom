@@ -26,7 +26,7 @@ exports.getInforPhomBinding = async (req, res) => {
 }
 exports.getInfoPhom = async (req, res) => {
   const companyName = req.body.companyName;
-  const RFID = req.body.LastMatNo;
+  const LastMatNo = req.body.LastMatNo;
   const result = await phomModel.getInfoPhom(companyName, LastMatNo);
   if (!result) {
     res.status(500).json("No phom found");
