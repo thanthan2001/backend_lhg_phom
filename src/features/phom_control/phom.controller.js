@@ -200,4 +200,50 @@ exports.saveBill = async (req,res)=>{
     console.log(result);
     res.status(200).json(result);
   }
+};
+exports.getOldBill = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.getOldBill(companyName,payload);
+    if (!result) {
+    res.status(500).json("Cant Found Bill");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+
+exports.confirmReturnPhom = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.confirmReturnPhom(companyName,payload);
+    if (!result) {
+    res.status(500).json("Cant Found Bill");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+exports.checkRFIDinBrBill = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.checkRFIDinBrBill(companyName,payload);
+    if (!result) {
+    res.status(500).json("Cant Found Bill");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+
+exports.submitReturnPhom = async (req,res)=>{
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.submitReturnPhom(companyName,payload);
+    if (!result) {
+    res.status(500).json("Cant Found Bill");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
 }

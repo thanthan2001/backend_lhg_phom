@@ -78,6 +78,9 @@ exports.saveBill = async (companyName, payload) => {
     };
   }
   else{
+    await db.Execute(
+      companyName, `UPDATE Last_Data_Binding SET isOut = 1 WHERE RFID = '${payload.RFID}'`
+    );
     return{
       status: "Success",
       statusCode: 200,
@@ -91,18 +94,18 @@ exports.getInfoPhom=async(companyname,LastMatNo)=> {
   try {
     const results = await db.Execute(
       companyname,
-     `SELECT 
-    LastMatNo,
-    LastName,
-    LastType,
-    Material,
-    LastSize,
-    COUNT(CASE WHEN isOut IS NULL OR isOut <> 1 THEN 1 END) AS SoLuongTonKho
-FROM 
-    Last_Data_Binding
-	where LastMatNo='${LastMatNo}'
-GROUP BY 
-    LastMatNo, LastName, LastType, Material, LastSize;`
+        `SELECT 
+        LastMatNo,
+        LastName,
+        LastType,
+        Material,
+        LastSize,
+        COUNT(CASE WHEN isOut IS NULL OR isOut <> 1 THEN 1 END) AS SoLuongTonKho
+    FROM 
+        Last_Data_Binding
+      where LastMatNo='${LastMatNo}'
+    GROUP BY 
+        LastMatNo, LastName, LastType, Material, LastSize;`
     );
     if (results.rowCount === 0) {
       return {
@@ -363,8 +366,12 @@ exports.ScanPhomMuonTra = async (companyname, RFID) => {
       await db.Execute(
         companyname,
         `INSERT INTO Last_Data_Scan_Temp (RFID, isOutScan, DateIn, DateOut)
-         VALUES ('${RFID}', 1, '1900-01-01', GETDATE())`
+         VALUES ('${RFID}', 1, '1900-01-01', GETDATE())
+               `
       );
+
+      // await db.Execute(companyname,`UPDATE Last_Data_Binding set isOut = 1
+      //    WHERE RFID = '${RFID}';`)
 
       return {
         status: "Success",
@@ -481,7 +488,9 @@ exports.TaoPhieuMuonPhom = async(companyname, payload) => {
 exports.LayPhieuMuonPhom = async(companyname, payload) => {
   try {
     const results = await db.Execute(companyname,
-      `select * from Last_Data_Bill where CONVERT(date, DateBorrow) = '${payload.DateBorrow}' and DepID = '${payload.DepID}' and Userid='${payload.UserID}' and LastMatNo='${payload.LastMatNo}'`
+      `select * from Last_Data_Bill where CONVERT(date, DateBorrow) = '${payload.DateBorrow}' 
+      and DepID = '${payload.DepID}' and Userid='${payload.UserID}' 
+      and LastMatNo='${payload.LastMatNo}'`
     );
     if (results.rowCount === 0) {
       return {
@@ -578,4 +587,198 @@ select * from Last_Data_Binding where RFID='${payload.RFID}'
       message: "Lỗi khi lấy phom.",
     };
   }
+}
+
+exports.getOldBill= async (companyname, payload) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT 
+        ldb.ID_bill, 
+        ldb.LastMatNo,
+          dldb.LastSum,
+          COUNT(ldso.RFID) AS TotalScanOut
+      FROM Last_Data_Bill ldb
+      JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
+      JOIN Last_Detail_Scan_Out ldso ON dldb.ID_bill = ldso.ID_bill
+      where ldb.DepID='${payload.DepID}' and ldb.Userid='${payload.UserID}' and CONVERT(DATE,ldb.DateBorrow)='${payload.DateBorrow}' and ldb.LastMatNo='${payload.LastMatNo}'
+      GROUP BY ldb.ID_bill, dldb.LastSum,ldb.LastMatNo;`
+    );
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 200,
+        data: [],
+        message: "Không có phiếu mượn nào",
+      };
+    } else {
+       const getReturnBill = await db.Execute(
+        companyname,
+        `select * from Return_Bill rb join Last_Data_Bill ldb on 
+          rb.ID_BILL = ldb.ID_bill
+          where rb.ID_BILL='${results.jsonArray[0].ID_bill}'`
+      );
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: {
+          results: results.jsonArray,
+          getReturnBill: getReturnBill.jsonArray,
+        },
+        message: "Lấy phiếu mượn thành công.",
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi khi lấy phiếu mượn:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy phiếu mượn.",
+    };
+    
+  }
+}
+
+exports.confirmReturnPhom= async (companyname, payload) => {
+  const checkBillExits = await db.Execute(
+    companyname,
+    `SELECT * FROM Return_Bill WHERE ID_BILL = '${payload.ID_BILL}'`
+  );
+  if(checkBillExits.rowCount !=0){
+    return {
+        status: "Error",
+      statusCode: 204,
+      data: [],
+      message: "Đơn đã đăng ký trả rồi!",
+    }
+  }
+
+  const results = await db.Execute(
+    companyname,
+    `EXEC Insert_Return_Bill 
+      @Userid = '${payload.UserID}',
+      @ID_BILL = '${payload.ID_BILL}',
+      @totalQuantityBorrow = ${payload.totalQuantityBorrow},
+      @totalQuantityReturn = ${payload.totalQuantityReturn},
+      @isConfirm = ${payload.isConfirm},
+      @ReturnRequestDate = '${payload.ReturnRequestDate}'`
+  );
+  const checkInsert = await db.Execute(
+    companyname,
+    `SELECT * FROM Return_Bill WHERE ID_BILL = '${payload.ID_BILL}'`
+  );
+  if (!checkInsert) {
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi xác nhận trả phom.",
+    };
+  }
+  return {
+    status: "Success",
+    statusCode: 200,
+    data: checkInsert.jsonArray,
+    message: "Xác nhận trả phom thành công.",
+  };
+}
+
+exports.checkRFIDinBrBill = async (companyname, payload) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT RFID FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}'`
+    );
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 500,
+        data: [],
+        message: "Không có phom nào",
+      };
+    } else {
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: results,
+        message: "Lấy phom thành công.",
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi khi lấy phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy phom.",
+    };
+  }
+}
+
+exports.submitReturnPhom = async (companyname, payload) => {
+  try {
+    const checkExitsRFIDinBill= await db.Execute(
+      companyname,
+      `SELECT RFID FROM Details_Last_Scan_Return WHERE RFID = '${payload.RFID}'`
+    );
+    if (checkExitsRFIDinBill.rowCount != 0) {
+      return {
+        status: "Error",
+        statusCode: 500,
+        data: [],
+        message: "RFID đã tồn tại trong bill.",
+      };
+    }
+    else{
+      const results = await db.Execute(
+        companyname,
+        `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate)
+          VALUES ('${payload.ID_BILL}', '${payload.RFID}', GETDATE())`
+      );
+      const checkInsert = await db.Execute(
+        companyname,
+        `SELECT * FROM Details_Last_Scan_Return WHERE RFID = '${payload.RFID}' and ID_Return = '${payload.ID_BILL}'`
+      );
+      await db.Execute(
+        companyname,
+        `UPDATE Last_Data_Binding SET isOut = 0 WHERE RFID = '${payload.RFID}'`
+      );
+      if(checkInsert.rowCount != 0){
+        await db.Execute(
+          companyname,
+          `UPDATE Return_Bill 
+          SET totalQuantityReturn = totalQuantityReturn + 1 
+          WHERE ID_Return = '${payload.ID_BILL}'
+          `
+        );
+        return{
+          status: "Success",
+          statusCode: 200,
+          data: checkInsert.jsonArray,
+          message: "Thêm RFID vào return bill thành công.",
+        }
+      }
+      else{
+        return {
+          status: "Error",
+          statusCode: 500,
+          data: [],
+          message: "Lỗi khi thêm RFID vào return bill.",
+        };
+      }
+      
+      
+    }
+  } catch (error) {
+     console.error("Lỗi khi lấy bill:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy bill.",
+    };
+  }
+
+  
 }
