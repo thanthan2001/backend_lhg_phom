@@ -23,3 +23,16 @@ exports.getAllUsers = async (req, res) => {
   console.log(result);
   res.status(200).json(result);
 };
+
+exports.getUserById= async (req, res) => {
+  const companyname = req.body.companyname;
+  const userID = req.body.userID;
+  console.log(companyname);
+  const result = await authModel.getUserById(companyname, userID);
+   if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}

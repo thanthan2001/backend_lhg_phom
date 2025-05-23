@@ -767,8 +767,6 @@ exports.submitReturnPhom = async (companyname, payload) => {
           message: "Lỗi khi thêm RFID vào return bill.",
         };
       }
-      
-      
     }
   } catch (error) {
      console.error("Lỗi khi lấy bill:", error);
@@ -779,6 +777,4 @@ exports.submitReturnPhom = async (companyname, payload) => {
       message: "Lỗi khi lấy bill.",
     };
   }
-
-  
-}
+  }
