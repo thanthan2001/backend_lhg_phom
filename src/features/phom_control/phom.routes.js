@@ -16,6 +16,7 @@ router.post('/layphieumuon', phomRoute.LayPhieuMuonPhom);
 router.post('/getphomrfid', phomRoute.TimPhomRFID);
 router.post('/getInfoPhom', phomRoute.getInfoPhom);
 router.post('/saveBill', phomRoute.saveBill);
+
 router.post('/getOldBill', phomRoute.getOldBill);
 router.post('/confirmReturnPhom', phomRoute.confirmReturnPhom);
 router.post('/checkRFIDinBrBill',phomRoute.checkRFIDinBrBill)
