@@ -13,6 +13,16 @@ exports.getAllPhom = async (req, res) => {
     res.status(200).json(result);
   }
 };
+exports.getPhomNotBinding = async (req, res) => {
+  const companyName = req.body.companyName;
+  const result = await phomModel.getPhomNotBinding(companyName);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
 exports.getInforPhomBinding = async (req, res) => {
 
   const companyName = req.body.companyName;

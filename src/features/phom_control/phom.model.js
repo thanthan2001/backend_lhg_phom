@@ -47,6 +47,41 @@ GROUP BY
     };
   }
 };
+
+exports.getPhomNotBinding= async (companyname) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `select LastMatNo from LastNoEntry group by LastMatNo`
+    );
+    if (!results || !results.jsonArray) {
+      console.warn("Không có dữ liệu hoặc jsonArray trả về từ cơ sở dữ liệu.");
+      return {
+        status: "Error",
+        statusCode: 404,
+        data: [],
+        message: "Không tìm thấy phom nào.",
+      };
+    }
+
+    const payload = {
+      status: "Success",
+      statusCode: 200,
+      data: results,
+      message: "Lấy tất cả phom thành công",
+    };
+    return payload;
+  } catch (error) {
+    console.error("Lỗi khi lấy tất cả phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [], // Trả về một mảng rỗng để tránh lỗi
+      message: "Lỗi khi lấy tất cả phom.",
+    };
+    
+  }
+}
 exports.saveBill = async (companyName, payload) => {
 
   const checkRFIDExists = await db.Execute(

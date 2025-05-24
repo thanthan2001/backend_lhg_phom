@@ -65,7 +65,6 @@ exports.login = async (companyname, userID, pwd) => {
 };
 
 exports.getUserById = async (companyname, userID) => {
-
   try {
     const results = await db.Execute(
       companyname,
@@ -91,6 +90,5 @@ exports.getUserById = async (companyname, userID) => {
       message: "Lỗi trong quá trình lấy thông tin người dùng.",
     };
   }
-
 }
 
