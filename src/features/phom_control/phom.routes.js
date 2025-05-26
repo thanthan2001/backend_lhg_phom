@@ -21,6 +21,7 @@ router.post('/confirmReturnPhom', phomRoute.confirmReturnPhom);
 router.post('/checkRFIDinBrBill',phomRoute.checkRFIDinBrBill)
 router.post('/submitReturnPhom',phomRoute.submitReturnPhom)
 router.post('/getPhomNotBinding',phomRoute.getPhomNotBinding)
-
+router.post('/getSizeNotBinding',phomRoute.getSizeNotBinding)
+router.post('/updatephom', phomRoute.updatePhom);
 
 module.exports = router;
