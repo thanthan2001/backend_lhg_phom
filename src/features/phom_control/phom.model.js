@@ -48,7 +48,6 @@ GROUP BY
   }
 };
 exports.saveBill = async (companyName, payload) => {
-
   const checkRFIDExists = await db.Execute(
     companyName,
     `SELECT * FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}'`
@@ -63,12 +62,14 @@ exports.saveBill = async (companyName, payload) => {
   }
 
   const result = await db.Execute(
-    companyName, `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan )
+    companyName,
+    `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan )
     values ('${payload.ID_BILL}', '${payload.DepID}', '${payload.RFID}', '${payload.ScanDate}', '${payload.StateScan}')`
   );
   const checkInsert = await db.Execute(
-    companyName, `SELECT * FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}  '`
-  )
+    companyName,
+    `SELECT * FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}  '`
+  );
   if (checkInsert.rowCount === 0) {
     return {
       status: "Error",
@@ -76,12 +77,12 @@ exports.saveBill = async (companyName, payload) => {
       data: [],
       message: "Lưu bill thất bại.",
     };
-  }
-  else{
+  } else {
     await db.Execute(
-      companyName, `UPDATE Last_Data_Binding SET isOut = 1 WHERE RFID = '${payload.RFID}'`
+      companyName,
+      `UPDATE Last_Data_Binding SET isOut = 1 WHERE RFID = '${payload.RFID}'`
     );
-    return{
+    return {
       status: "Success",
       statusCode: 200,
       data: checkInsert,
@@ -90,22 +91,23 @@ exports.saveBill = async (companyName, payload) => {
   }
 };
 
-exports.getInfoPhom=async(companyname,LastMatNo)=> {
+exports.getInfoPhom = async (companyname, LastMatNo) => {
   try {
     const results = await db.Execute(
       companyname,
-        `SELECT 
-        LastMatNo,
-        LastName,
-        LastType,
-        Material,
-        LastSize,
-        COUNT(CASE WHEN isOut IS NULL OR isOut <> 1 THEN 1 END) AS SoLuongTonKho
-    FROM 
-        Last_Data_Binding
-      where LastMatNo='${LastMatNo}'
-    GROUP BY 
-        LastMatNo, LastName, LastType, Material, LastSize;`
+      `SELECT 
+    LastMatNo,
+    LastName,
+    LastType,
+    Material,
+    LastSize,
+    COUNT(CASE WHEN isOut IS NULL OR isOut <> 1 THEN 1 END) AS SoLuongTonKho
+FROM 
+    Last_Data_Binding
+WHERE 
+    LastName LIKE '%' + '${LastMatNo}' + '%'
+GROUP BY 
+    LastMatNo, LastName, LastType, Material, LastSize;`
     );
     if (results.rowCount === 0) {
       return {
@@ -122,7 +124,6 @@ exports.getInfoPhom=async(companyname,LastMatNo)=> {
         message: "Lấy phom thành công.",
       };
     }
-    
   } catch (error) {
     console.error("Lỗi khi lấy thông tin phom:", error);
     return {
@@ -131,7 +132,6 @@ exports.getInfoPhom=async(companyname,LastMatNo)=> {
       data: [],
       message: "Lỗi khi lấy thông tin phom.",
     };
-    
   }
 };
 exports.getLastMatNo = async (companyname) => {
@@ -156,7 +156,7 @@ exports.getLastMatNo = async (companyname) => {
       message: "Lỗi khi lấy mã vật tư.",
     };
   }
-}
+};
 exports.getPhomByLastMatNo = async (companyname, LastMatNo) => {
   try {
     const results = await db.Execute(
@@ -203,7 +203,6 @@ exports.getSizeByLastMatNo = async (companyname, LastMatNo) => {
   }
 };
 exports.getDepartment = async (companyname) => {
-
   try {
     const results = await db.Execute(
       companyname,
@@ -224,7 +223,7 @@ exports.getDepartment = async (companyname) => {
       message: "Lỗi khi lấy tên phòng ban.",
     };
   }
-}
+};
 exports.searchPhomBinding = async (companyname, MaVatTu, TenPhom, SizePhom) => {
   try {
     const results = await db.Execute(
@@ -415,11 +414,12 @@ exports.ScanPhomMuonTra = async (companyname, RFID) => {
   }
 };
 
-exports.TaoPhieuMuonPhom = async(companyname, payload) => {
-    try {
-      // Tạo Đơn Mượn
-      const TaoPhieuMuon = await db.Execute(companyname,
-        `EXEC Insert_Last_Data_Bill
+exports.TaoPhieuMuonPhom = async (companyname, payload) => {
+  try {
+    // Tạo Đơn Mượn
+    const TaoPhieuMuon = await db.Execute(
+      companyname,
+      `EXEC Insert_Last_Data_Bill
           @Userid = '${payload.UserID}',
           @DepID = '${payload.DepID}',
           @DateBorrow = '${payload.DateBorrow}',
@@ -427,67 +427,71 @@ exports.TaoPhieuMuonPhom = async(companyname, payload) => {
           @LastMatNo = '${payload.LastMatNo}',
           @isConfirm = 0,
           @StateLastBill = 0;`
-      );
-      const GetPhieuMuon = await db.Execute(companyname,
-        `select * from Last_Data_Bill where DepID='${payload.DepID}' and 
+    );
+    const GetPhieuMuon = await db.Execute(
+      companyname,
+      `select * from Last_Data_Bill where DepID='${payload.DepID}' and 
         DateBorrow='${payload.DateBorrow}' and DateReceive='${payload.DateReceive}' and LastMatNo='${payload.LastMatNo}'`
-      );
-      if (GetPhieuMuon.rowCount === 0) {
+    );
+    if (GetPhieuMuon.rowCount === 0) {
+      return {
+        status: "Error",
+        statusCode: 400,
+        data: [],
+        message: "Không tìm thấy phiếu mượn.",
+      };
+    } else {
+      const ID_Bill = GetPhieuMuon.jsonArray[0].ID_bill;
+      if (ID_Bill === null || ID_Bill === undefined) {
         return {
           status: "Error",
           statusCode: 400,
           data: [],
-          message: "Không tìm thấy phiếu mượn.",
+          message: "Không tìm thấy ID_Bill.",
         };
-      }
-      else{
-        const ID_Bill = GetPhieuMuon.jsonArray[0].ID_bill;
-        if (ID_Bill === null || ID_Bill === undefined) {
-          return {
-            status: "Error",
-            statusCode: 400,
-            data: [],
-            message: "Không tìm thấy ID_Bill.",
-          };
-        }
-        else{
-          // Tạo Đơn Mượn Chi Tiết
-         for (const item of payload.Details) {
-            const TaoPhieuMuonCT = await db.Execute(companyname,
-              `EXEC Insert_Detail_Last_Data_Bill
+      } else {
+        // Tạo Đơn Mượn Chi Tiết
+        for (const item of payload.Details) {
+          const TaoPhieuMuonCT = await db.Execute(
+            companyname,
+            `EXEC Insert_Detail_Last_Data_Bill
                 @ID_bill = '${ID_Bill}',
                 @DepID = '${payload.DepID}',
                 @LastMatNo = '${payload.LastMatNo}',
                 @LastName = N'${item.LastName}',  -- dùng N'' nếu có tiếng Việt
                 @LastSize = '${item.LastSize}',
                 @LastSum = ${item.LastSum};`
-            );
-          }
+          );
         }
-        const results = await db.Execute(companyname, `select * from Last_Data_Bill where ID_bill = '${ID_Bill}'`);
-        if (results.rowCount !== 0 && results.jsonArray.length > 0) {
-         return{
+      }
+      const results = await db.Execute(
+        companyname,
+        `select * from Last_Data_Bill where ID_bill = '${ID_Bill}'`
+      );
+      if (results.rowCount !== 0 && results.jsonArray.length > 0) {
+        return {
           status: "Success",
           statusCode: 200,
           data: results.jsonArray,
           message: "Tạo phiếu mượn thành công.",
-         }
-        }
+        };
       }
-    } catch (error) {
-      console.error("Lỗi khi tạo phiếu mượn:", error);
-      return {
-        status: "Error",
-        statusCode: 500,
-        data: [],
-        message: "Lỗi khi tạo phiếu mượn.",
-      };
     }
-}
+  } catch (error) {
+    console.error("Lỗi khi tạo phiếu mượn:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi tạo phiếu mượn.",
+    };
+  }
+};
 
-exports.LayPhieuMuonPhom = async(companyname, payload) => {
+exports.LayPhieuMuonPhom = async (companyname, payload) => {
   try {
-    const results = await db.Execute(companyname,
+    const results = await db.Execute(
+      companyname,
       `select * from Last_Data_Bill where CONVERT(date, DateBorrow) = '${payload.DateBorrow}' 
       and DepID = '${payload.DepID}' and Userid='${payload.UserID}' 
       and LastMatNo='${payload.LastMatNo}'`
@@ -501,7 +505,8 @@ exports.LayPhieuMuonPhom = async(companyname, payload) => {
       };
     } else {
       const ID_Bill = results.jsonArray[0].ID_bill;
-      const getDetailsBill = await db.Execute(companyname,
+      const getDetailsBill = await db.Execute(
+        companyname,
         `select * from Detail_Last_Data_Bill where ID_bill = '${ID_Bill}'`
       );
       console.log("ID_Bill", getDetailsBill);
@@ -521,7 +526,7 @@ exports.LayPhieuMuonPhom = async(companyname, payload) => {
       message: "Lỗi khi lấy phiếu mượn.",
     };
   }
-}
+};
 
 exports.TimPhomRFID = async (companyname, payload) => {
   try {
@@ -553,7 +558,7 @@ exports.TimPhomRFID = async (companyname, payload) => {
       message: "Lỗi khi lấy phom.",
     };
   }
-}
+};
 
 exports.getRFIDPhom = async (companyname, payload) => {
   try {
@@ -587,9 +592,9 @@ select * from Last_Data_Binding where RFID='${payload.RFID}'
       message: "Lỗi khi lấy phom.",
     };
   }
-}
+};
 
-exports.getOldBill= async (companyname, payload) => {
+exports.getOldBill = async (companyname, payload) => {
   try {
     const results = await db.Execute(
       companyname,
@@ -612,7 +617,7 @@ exports.getOldBill= async (companyname, payload) => {
         message: "Không có phiếu mượn nào",
       };
     } else {
-       const getReturnBill = await db.Execute(
+      const getReturnBill = await db.Execute(
         companyname,
         `select * from Return_Bill rb join Last_Data_Bill ldb on 
           rb.ID_BILL = ldb.ID_bill
@@ -636,22 +641,21 @@ exports.getOldBill= async (companyname, payload) => {
       data: [],
       message: "Lỗi khi lấy phiếu mượn.",
     };
-    
   }
-}
+};
 
-exports.confirmReturnPhom= async (companyname, payload) => {
+exports.confirmReturnPhom = async (companyname, payload) => {
   const checkBillExits = await db.Execute(
     companyname,
     `SELECT * FROM Return_Bill WHERE ID_BILL = '${payload.ID_BILL}'`
   );
-  if(checkBillExits.rowCount !=0){
+  if (checkBillExits.rowCount != 0) {
     return {
-        status: "Error",
+      status: "Error",
       statusCode: 204,
       data: [],
       message: "Đơn đã đăng ký trả rồi!",
-    }
+    };
   }
 
   const results = await db.Execute(
@@ -682,7 +686,7 @@ exports.confirmReturnPhom= async (companyname, payload) => {
     data: checkInsert.jsonArray,
     message: "Xác nhận trả phom thành công.",
   };
-}
+};
 
 exports.checkRFIDinBrBill = async (companyname, payload) => {
   try {
@@ -714,11 +718,11 @@ exports.checkRFIDinBrBill = async (companyname, payload) => {
       message: "Lỗi khi lấy phom.",
     };
   }
-}
+};
 
 exports.submitReturnPhom = async (companyname, payload) => {
   try {
-    const checkExitsRFIDinBill= await db.Execute(
+    const checkExitsRFIDinBill = await db.Execute(
       companyname,
       `SELECT RFID FROM Details_Last_Scan_Return WHERE RFID = '${payload.RFID}'`
     );
@@ -729,8 +733,7 @@ exports.submitReturnPhom = async (companyname, payload) => {
         data: [],
         message: "RFID đã tồn tại trong bill.",
       };
-    }
-    else{
+    } else {
       const results = await db.Execute(
         companyname,
         `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate)
@@ -744,7 +747,7 @@ exports.submitReturnPhom = async (companyname, payload) => {
         companyname,
         `UPDATE Last_Data_Binding SET isOut = 0 WHERE RFID = '${payload.RFID}'`
       );
-      if(checkInsert.rowCount != 0){
+      if (checkInsert.rowCount != 0) {
         await db.Execute(
           companyname,
           `UPDATE Return_Bill 
@@ -752,14 +755,13 @@ exports.submitReturnPhom = async (companyname, payload) => {
           WHERE ID_Return = '${payload.ID_BILL}'
           `
         );
-        return{
+        return {
           status: "Success",
           statusCode: 200,
           data: checkInsert.jsonArray,
           message: "Thêm RFID vào return bill thành công.",
-        }
-      }
-      else{
+        };
+      } else {
         return {
           status: "Error",
           statusCode: 500,
@@ -769,7 +771,7 @@ exports.submitReturnPhom = async (companyname, payload) => {
       }
     }
   } catch (error) {
-     console.error("Lỗi khi lấy bill:", error);
+    console.error("Lỗi khi lấy bill:", error);
     return {
       status: "Error",
       statusCode: 500,
@@ -777,4 +779,4 @@ exports.submitReturnPhom = async (companyname, payload) => {
       message: "Lỗi khi lấy bill.",
     };
   }
-  }
+};
