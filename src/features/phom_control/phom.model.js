@@ -47,6 +47,75 @@ GROUP BY
     };
   }
 };
+exports.getSizeNotBinding = async (companyname,LastmatNo) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT DISTINCT LastSize FROM LastNoD where LastMatNo = '${LastmatNo}' group by LastSize`
+    );
+    if (!results || !results.jsonArray) {
+      console.warn("Không có dữ liệu hoặc jsonArray trả về từ cơ sở dữ liệu.");
+      return {
+        status: "Error",
+        statusCode: 404,
+        data: [],
+        message: "Không tìm thấy phom nào.",
+      };
+    }
+
+    const payload = {
+      status: "Success",
+      statusCode: 200,
+      data: results,
+      message: "Lấy tất cả phom thành công",
+    };
+    return payload;
+  } catch (error) {
+    console.error("Lỗi khi lấy tất cả phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [], // Trả về một mảng rỗng để tránh lỗi
+      message: "Lỗi khi lấy tất cả phom.",
+    };
+    
+  }
+}
+
+exports.getPhomNotBinding= async (companyname) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `select LastMatNo from LastNoEntry group by LastMatNo`
+    );
+    if (!results || !results.jsonArray) {
+      console.warn("Không có dữ liệu hoặc jsonArray trả về từ cơ sở dữ liệu.");
+      return {
+        status: "Error",
+        statusCode: 404,
+        data: [],
+        message: "Không tìm thấy phom nào.",
+      };
+    }
+
+    const payload = {
+      status: "Success",
+      statusCode: 200,
+      data: results,
+      message: "Lấy tất cả phom thành công",
+    };
+    return payload;
+  } catch (error) {
+    console.error("Lỗi khi lấy tất cả phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [], // Trả về một mảng rỗng để tránh lỗi
+      message: "Lỗi khi lấy tất cả phom.",
+    };
+    
+  }
+}
 exports.saveBill = async (companyName, payload) => {
   const checkRFIDExists = await db.Execute(
     companyName,
@@ -95,7 +164,7 @@ exports.getInfoPhom = async (companyname, LastMatNo) => {
   try {
     const results = await db.Execute(
       companyname,
-      `SELECT 
+        `SELECT 
     LastMatNo,
     LastName,
     LastType,
@@ -351,7 +420,64 @@ exports.bindingPhom = async (
     };
   }
 };
+exports.updatePhom = async (
+  RFID,
+  LastMatNo,
+  LastName,
+  LastType,
+  Material,
+  LastSize,
+  LastSide,
+  UserID,
+  ShelfName,
+  DateIn,
+  companyname
+) => {
+  try {
+   
+    //Insert
+    const results = await db.Execute(
+      companyname,
+      `
+      UPDATE Last_Data_Binding SET
+        LastMatNo = '${LastMatNo}',
+        LastName = '${LastName}',
+        LastType = '${LastType}',
+        Material = '${Material}',
+        LastSize = '${LastSize}',
+        LastSide = '${LastSide}',
+        UserID = '${UserID}',
+        ShelfName = '${ShelfName}',
+        DateIn = '${DateIn}'
+      WHERE RFID = '${RFID}'
+      `
+    );
 
+    //Data Inserted
+    const insertedData = await db.Execute(
+      companyname,
+      `SELECT * FROM Last_Data_Binding WHERE RFID = '${RFID}' and 
+      LastMatNo = '${LastMatNo}' and LastSize = '${LastSize}' 
+      and LastSide = '${LastSide}' and LastName = '${LastName}' and
+      UserID = '${UserID}' and ShelfName = '${ShelfName}'`
+    );
+
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: insertedData,
+      message: "Gán phom thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi gán phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi gán phom.",
+    };
+  }
+};
 exports.ScanPhomMuonTra = async (companyname, RFID) => {
   try {
     // Kiểm tra xem RFID đã tồn tại trong bảng hay chưa
@@ -779,4 +905,4 @@ exports.submitReturnPhom = async (companyname, payload) => {
       message: "Lỗi khi lấy bill.",
     };
   }
-};
+  }
