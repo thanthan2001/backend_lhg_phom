@@ -25,10 +25,10 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById= async (req, res) => {
-  const companyname = req.body.companyname;
+  const companyName = req.body.companyName;
   const userID = req.body.userID;
-  console.log(companyname);
-  const result = await authModel.getUserById(companyname, userID);
+  console.log(companyName);
+  const result = await authModel.getUserById(companyName, userID);
    if (!result) {
     res.status(500).json("No phom found");
   } else {
