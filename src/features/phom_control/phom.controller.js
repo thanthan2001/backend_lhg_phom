@@ -123,6 +123,7 @@ exports.bindingPhom = async (req, res) => {
   const RFID = req.body.RFID;
   const LastMatNo = req.body.LastMatNo;
   const LastName = req.body.LastName;
+  const LastNo = req.body.LastNo;
   const LastType = req.body.LastType;
   const Material = req.body.Material;
   const LastSize = req.body.LastSize;
@@ -135,6 +136,7 @@ exports.bindingPhom = async (req, res) => {
     RFID,
     LastMatNo,
     LastName,
+    LastNo,
     LastType,
     Material,
     LastSize,
@@ -245,17 +247,23 @@ exports.getRFIDPhom = async (req,res)=>{
   }
 }
 
-exports.saveBill = async (req,res)=>{
+// controller
+exports.saveBill = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.saveBill(companyName,payload);
+
+  try {
+    const result = await phomModel.saveBill(companyName, payload);
     if (!result) {
-    res.status(500).json("No phom found");
-  } else {
-    console.log(result);
-    res.status(200).json(result);
+      return res.status(500).json({ status: "Error", message: "Không thể lưu dữ liệu." });
+    }
+
+    res.status(200).json(result); // chỉ gọi res tại controller
+  } catch (error) {
+    res.status(500).json({ status: "Error", message: error.message });
   }
 };
+
 exports.getOldBill = async (req,res)=>{
   const payload = req.body;
   const companyName = payload.companyName;
@@ -297,6 +305,18 @@ exports.submitReturnPhom = async (req,res)=>{
   const result = await phomModel.submitReturnPhom(companyName,payload);
     if (!result) {
     res.status(500).json("Cant Found Bill");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
+
+exports.getBorrowBill = async (req, res) => {
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.getBorrowBill(companyName, payload);
+  if (!result) {
+    res.status(500).json("No borrow bill found");
   } else {
     console.log(result);
     res.status(200).json(result);

@@ -9,6 +9,7 @@ router.post("/getPhomByLastMatNo", phomRoute.getPhomByLastMatNo);
 router.post("/getSizeByLastMatNo",phomRoute.getSizeByLastMatNo)
 router.post("/getDepartment", phomRoute.getDepartment);
 router.post("/searchPhomBinding", phomRoute.searchPhomBinding);
+router.post("/getBorrowBill", phomRoute.getBorrowBill);
 router.post("/bindingPhom", phomRoute.bindingPhom);
 router.post("/scanouttemp", phomRoute.ScanPhomMuonTra);
 router.post("/submit_borrow", phomRoute.TaoPhieuMuonPhom);
@@ -23,5 +24,6 @@ router.post('/submitReturnPhom',phomRoute.submitReturnPhom)
 router.post('/getPhomNotBinding',phomRoute.getPhomNotBinding)
 router.post('/getSizeNotBinding',phomRoute.getSizeNotBinding)
 router.post('/updatephom', phomRoute.updatePhom);
+
 
 module.exports = router;
