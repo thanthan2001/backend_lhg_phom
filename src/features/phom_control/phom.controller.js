@@ -314,7 +314,7 @@ exports.submitReturnPhom = async (req,res)=>{
 exports.getBorrowBill = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.getBorrowBill(companyName, payload);
+  const result = await phomModel.getBorrowBill(companyName);
   if (!result) {
     res.status(500).json("No borrow bill found");
   } else {

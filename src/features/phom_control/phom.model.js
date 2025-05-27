@@ -48,7 +48,7 @@ GROUP BY
   }
 };
 
-exports.getBorrowBill= async (companyname, payload) => {
+exports.getBorrowBill= async (companyname) => {
   try {
     const results = await db.Execute(
       companyname,
