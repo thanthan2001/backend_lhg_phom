@@ -322,12 +322,26 @@ exports.getBorrowBill = async (req, res) => {
     res.status(200).json(result);
   }
 }
-exports.submitTransfer = async (req, res) => {
+
+exports.confirmBorrowBill = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.submitTransfer(companyName, payload);
+  const result = await phomModel.confirmBorrowBill(companyName, payload);
   if (!result) {
-    res.status(500).json("No transfer found");
+    res.status(500).json("No borrow bill found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
+
+exports.getBorrowBillByUser = async (req, res) => {
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const UserID = payload.UserID;
+  const result = await phomModel.getBorrowBillByUser(companyName, UserID);
+  if (!result) {
+    res.status(500).json("No borrow bill found");
   } else {
     console.log(result);
     res.status(200).json(result);
