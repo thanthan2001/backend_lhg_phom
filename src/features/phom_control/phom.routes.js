@@ -24,6 +24,7 @@ router.post('/submitReturnPhom',phomRoute.submitReturnPhom)
 router.post('/getPhomNotBinding',phomRoute.getPhomNotBinding)
 router.post('/getSizeNotBinding',phomRoute.getSizeNotBinding)
 router.post('/updatephom', phomRoute.updatePhom);
+router.post('/submitTransfer',phomRoute.submitTransfer);
 
 
 module.exports = router;
