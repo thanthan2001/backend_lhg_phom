@@ -10,6 +10,8 @@ router.post("/getSizeByLastMatNo",phomRoute.getSizeByLastMatNo)
 router.post("/getDepartment", phomRoute.getDepartment);
 router.post("/searchPhomBinding", phomRoute.searchPhomBinding);
 router.post("/getBorrowBill", phomRoute.getBorrowBill);
+router.post('/confirmBorrowBill', phomRoute.confirmBorrowBill);
+router.post("/getBorrowBillByUser", phomRoute.getBorrowBillByUser);
 router.post("/bindingPhom", phomRoute.bindingPhom);
 router.post("/scanouttemp", phomRoute.ScanPhomMuonTra);
 router.post("/submit_borrow", phomRoute.TaoPhieuMuonPhom);

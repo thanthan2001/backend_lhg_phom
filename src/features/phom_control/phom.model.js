@@ -52,10 +52,27 @@ exports.getBorrowBill= async (companyname) => {
   try {
     const results = await db.Execute(
       companyname,
-      `select dldb.ID_bill,dldb.DepID,ldb.Userid,ldb.Userid ,ldb.LastMatNo,dldb.LastName,dldb.LastSize,dldb.LastSum
-,ldb.DateBorrow,ldb.DateReceive,ldb.isConfirm
-from Last_Data_Bill ldb join Detail_Last_Data_Bill dldb on ldb.ID_bill=dldb.ID_bill
-`
+      `SELECT 
+    dldb.ID_bill, 
+    dldb.DepID,
+	bdep.DepName,
+    ldb.Userid, 
+    bu.USERNAME AS BorrowerName,         -- Người mượn
+    ldb.OfficerId, 
+    officer.USERNAME AS OfficerName,     -- Người xử lý/Officer
+    ldb.LastMatNo, 
+    dldb.LastName, 
+    dldb.LastSize, 
+    dldb.LastSum,
+    ldb.DateBorrow, 
+    ldb.DateReceive, 
+    ldb.isConfirm,
+	ldb.StateLastBill
+FROM Last_Data_Bill ldb
+JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
+LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
+LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
+LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID;`
     );
     if (results.rowCount === 0) {
       return {
@@ -607,8 +624,8 @@ exports.TaoPhieuMuonPhom = async (companyname, payload) => {
           @DateReceive = '${payload.DateReceive}',
           @LastMatNo = '${payload.LastMatNo}',
           @isConfirm = 0,
-          @StateLastBill = 0;`
-    );
+          @StateLastBill = 0,
+          @OfficerId = '${payload.OfficerId}'` );
     const GetPhieuMuon = await db.Execute(
       companyname,
       `select * from Last_Data_Bill where DepID='${payload.DepID}' and 
@@ -961,3 +978,91 @@ exports.submitReturnPhom = async (companyname, payload) => {
     };
   }
   }
+
+exports.confirmBorrowBill = async (companyname, payload) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `UPDATE Last_Data_Bill 
+       SET isConfirm = 1
+       WHERE ID_bill = '${payload.ID_bill}'`
+    );
+    if (results.rowCount === 0) {
+      return {
+        status: "Error",
+        statusCode: 500,
+        data: [],
+        message: "Không tìm thấy phiếu mượn.",
+      };
+    } else {
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: results.jsonArray,
+        message: "Xác nhận phiếu mượn thành công.",
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi khi xác nhận phiếu mượn:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi xác nhận phiếu mượn.",
+    };
+  }
+}
+
+exports.getBorrowBillByUser = async (companyname, payload) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT 
+        ldb.ID_bill, 
+        ldb.DepID,
+        bdep.DepName,
+        ldb.Userid, 
+        bu.USERNAME AS BorrowerName,         -- Người mượn
+        ldb.OfficerId, 
+        officer.USERNAME AS OfficerName,     -- Người xử lý/Officer
+        ldb.LastMatNo, 
+        dldb.LastName, 
+        dldb.LastSize, 
+        dldb.LastSum,
+        ldb.DateBorrow, 
+        ldb.DateReceive, 
+        ldb.isConfirm,
+        ldb.StateLastBill
+      FROM Last_Data_Bill ldb
+      JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
+      LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
+      LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
+      LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID
+      WHERE ldb.Userid = '${payload}'`
+    );
+    console.log("results", results);
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 400,
+        data: [],
+        message: "Không có phiếu mượn nào",
+      };
+    } else {
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: results.jsonArray,
+        message: "Lấy phiếu mượn thành công.",
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi khi lấy phiếu mượn:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy phiếu mượn.",
+    };
+  }
+}
