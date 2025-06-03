@@ -347,3 +347,14 @@ exports.getBorrowBillByUser = async (req, res) => {
     res.status(200).json(result);
   }
 }
+exports.submitTransfer=async (req, res) => {
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.submitTransfer(companyName, payload);
+  if (!result) {
+    res.status(500).json("No transfer found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+}
