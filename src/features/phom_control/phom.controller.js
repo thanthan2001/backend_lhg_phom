@@ -5,7 +5,7 @@ const phomModel = require("./phom.model");
 exports.getAllPhom = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
-  const result = await phomModel.getAllPhom(companyName,LastMatNo);
+  const result = await phomModel.getAllPhom(companyName, LastMatNo);
   if (!result) {
     res.status(500).json("No phom found");
   } else {
@@ -22,7 +22,7 @@ exports.getPhomNotBinding = async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 exports.getSizeNotBinding = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
@@ -34,9 +34,8 @@ exports.getSizeNotBinding = async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 exports.getInforPhomBinding = async (req, res) => {
-
   const companyName = req.body.companyName;
   const result = await phomModel.getInforPhomBinding(companyName);
   if (!result) {
@@ -45,7 +44,7 @@ exports.getInforPhomBinding = async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 exports.getInfoPhom = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
@@ -56,7 +55,7 @@ exports.getInfoPhom = async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 exports.getLastMatNo = async (req, res) => {
   const companyName = req.body.companyName;
   const result = await phomModel.getLastMatNo(companyName);
@@ -66,7 +65,7 @@ exports.getLastMatNo = async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 exports.getPhomByLastMatNo = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
@@ -78,18 +77,18 @@ exports.getPhomByLastMatNo = async (req, res) => {
     res.status(200).json(result);
   }
 };
-exports.getSizeByLastMatNo = async(req,res)=>{
+exports.getSizeByLastMatNo = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
-   const result = await phomModel.getSizeByLastMatNo(companyName, LastMatNo);
+  const result = await phomModel.getSizeByLastMatNo(companyName, LastMatNo);
   if (!result) {
     res.status(500).json("No phom found");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
-exports.getDepartment= async (req, res) => {
+};
+exports.getDepartment = async (req, res) => {
   const companyName = req.body.companyName;
   const result = await phomModel.getDepartment(companyName);
   if (!result) {
@@ -98,7 +97,7 @@ exports.getDepartment= async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 exports.searchPhomBinding = async (req, res) => {
   const companyName = req.body.companyName;
   const MaVatTu = req.body.MaVatTu;
@@ -199,53 +198,53 @@ exports.ScanPhomMuonTra = async (req, res) => {
   }
 };
 
-exports.TaoPhieuMuonPhom = async (req,res)=>{
+exports.TaoPhieuMuonPhom = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.TaoPhieuMuonPhom(companyName,payload);
-    if (!result) {
+  const result = await phomModel.TaoPhieuMuonPhom(companyName, payload);
+  if (!result) {
     res.status(500).json("No phom found");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 
-exports.LayPhieuMuonPhom = async (req,res)=>{
+exports.LayPhieuMuonPhom = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.LayPhieuMuonPhom(companyName,payload);
-    if (!result) {
+  const result = await phomModel.LayPhieuMuonPhom(companyName, payload);
+  if (!result) {
     res.status(500).json("No phom found");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 
-exports.TimPhomRFID = async (req,res)=>{
+exports.TimPhomRFID = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.TimPhomRFID(companyName,payload);
-    if (!result) {
+  const result = await phomModel.TimPhomRFID(companyName, payload);
+  if (!result) {
     res.status(500).json("No phom found");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 
-exports.getRFIDPhom = async (req,res)=>{
+exports.getRFIDPhom = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.getRFIDPhom(companyName,payload);
-    if (!result) {
+  const result = await phomModel.getRFIDPhom(companyName, payload);
+  if (!result) {
     res.status(500).json("No phom found");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 
 // controller
 exports.saveBill = async (req, res) => {
@@ -255,7 +254,9 @@ exports.saveBill = async (req, res) => {
   try {
     const result = await phomModel.saveBill(companyName, payload);
     if (!result) {
-      return res.status(500).json({ status: "Error", message: "Không thể lưu dữ liệu." });
+      return res
+        .status(500)
+        .json({ status: "Error", message: "Không thể lưu dữ liệu." });
     }
 
     res.status(200).json(result); // chỉ gọi res tại controller
@@ -264,52 +265,52 @@ exports.saveBill = async (req, res) => {
   }
 };
 
-exports.getOldBill = async (req,res)=>{
+exports.getOldBill = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.getOldBill(companyName,payload);
-    if (!result) {
+  const result = await phomModel.getOldBill(companyName, payload);
+  if (!result) {
     res.status(500).json("Cant Found Bill");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 
-exports.confirmReturnPhom = async (req,res)=>{
+exports.confirmReturnPhom = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.confirmReturnPhom(companyName,payload);
-    if (!result) {
+  const result = await phomModel.confirmReturnPhom(companyName, payload);
+  if (!result) {
     res.status(500).json("Cant Found Bill");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
-exports.checkRFIDinBrBill = async (req,res)=>{
+};
+exports.checkRFIDinBrBill = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.checkRFIDinBrBill(companyName,payload);
-    if (!result) {
+  const result = await phomModel.checkRFIDinBrBill(companyName, payload);
+  if (!result) {
     res.status(500).json("Cant Found Bill");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 
-exports.submitReturnPhom = async (req,res)=>{
+exports.submitReturnPhom = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
-  const result = await phomModel.submitReturnPhom(companyName,payload);
-    if (!result) {
+  const result = await phomModel.submitReturnPhom(companyName, payload);
+  if (!result) {
     res.status(500).json("Cant Found Bill");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
 
 exports.getBorrowBill = async (req, res) => {
   const payload = req.body;
@@ -321,7 +322,27 @@ exports.getBorrowBill = async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
+
+exports.getAllReturnBill = async (req, res) => {
+  const payload = req.body;
+  console.log("Payload:", payload);
+  const companyName = payload.companyName;
+  console.log("CompanyName:", companyName);
+
+  try {
+    const result = await phomModel.getAllReturnBill(companyName, payload);
+    console.log("Kết quả:", result);
+    if (!result) {
+      res.status(500).json("No return bill found");
+    } else {
+      res.status(200).json(result);
+    }
+  } catch (error) {
+    console.error("Lỗi từ controller getAllReturnBill:", error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
 
 exports.confirmBorrowBill = async (req, res) => {
   const payload = req.body;
@@ -346,8 +367,21 @@ exports.getBorrowBillByUser = async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
-exports.submitTransfer=async (req, res) => {
+};
+
+exports.getAllPhomManagement = async (req, res) => {
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.getAllPhomManagement(companyName);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
+
+exports.submitTransfer = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
   const result = await phomModel.submitTransfer(companyName, payload);
@@ -357,4 +391,4 @@ exports.submitTransfer=async (req, res) => {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
