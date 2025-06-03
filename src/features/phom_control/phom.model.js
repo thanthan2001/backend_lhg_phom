@@ -48,7 +48,7 @@ GROUP BY
   }
 };
 
-exports.getBorrowBill= async (companyname) => {
+exports.getBorrowBill = async (companyname) => {
   try {
     const results = await db.Execute(
       companyname,
@@ -97,10 +97,9 @@ LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID;`
       data: [],
       message: "Lỗi khi lấy phiếu mượn.",
     };
-    
   }
-}
-exports.getSizeNotBinding = async (companyname,LastmatNo) => {
+};
+exports.getSizeNotBinding = async (companyname, LastmatNo) => {
   try {
     const results = await db.Execute(
       companyname,
@@ -131,11 +130,10 @@ exports.getSizeNotBinding = async (companyname,LastmatNo) => {
       data: [], // Trả về một mảng rỗng để tránh lỗi
       message: "Lỗi khi lấy tất cả phom.",
     };
-    
   }
-}
+};
 
-exports.getPhomNotBinding= async (companyname) => {
+exports.getPhomNotBinding = async (companyname) => {
   try {
     const results = await db.Execute(
       companyname,
@@ -166,9 +164,8 @@ exports.getPhomNotBinding= async (companyname) => {
       data: [], // Trả về một mảng rỗng để tránh lỗi
       message: "Lỗi khi lấy tất cả phom.",
     };
-    
   }
-}
+};
 // model
 exports.saveBill = async (companyName, body) => {
   const { scannedRfidDetailsList } = body;
@@ -203,7 +200,10 @@ exports.saveBill = async (companyName, body) => {
         `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan)
          VALUES ('${payload.ID_BILL}', '${payload.DepID}', '${payload.RFID}', '${payload.ScanDate}', '${payload.StateScan}')`
       );
-      await db.Execute(companyName,`UPDATE Last_Data_Bill SET StateLastBill = 1 WHERE ID_bill = '${payload.ID_BILL}'`);
+      await db.Execute(
+        companyName,
+        `UPDATE Last_Data_Bill SET StateLastBill = 1 WHERE ID_bill = '${payload.ID_BILL}'`
+      );
       await db.Execute(
         companyName,
         `UPDATE Last_Data_Binding SET isOut = 1 WHERE RFID = '${payload.RFID}'`
@@ -217,7 +217,9 @@ exports.saveBill = async (companyName, body) => {
       });
     }
   }
-  const dataInsertLastInOutNo = await db.Execute(companyName, `
+  const dataInsertLastInOutNo = await db.Execute(
+    companyName,
+    `
   SELECT 
     ldb.Userid,
     ldb.DepID,
@@ -240,49 +242,57 @@ exports.saveBill = async (companyName, body) => {
     ldb.LastMatNo,
     ldb.DateBorrow,
     ldb.DateReceive
-`);
+`
+  );
 
-const ListDataInOutNo = dataInsertLastInOutNo.jsonArray;
+  const ListDataInOutNo = dataInsertLastInOutNo.jsonArray;
 
-const LastSumQty = ListDataInOutNo.reduce((acc, item) => {
-  return acc + parseFloat(item.QtySide); // sử dụng parseFloat để cộng 0.5
-}, 0);
+  const LastSumQty = ListDataInOutNo.reduce((acc, item) => {
+    return acc + parseFloat(item.QtySide); // sử dụng parseFloat để cộng 0.5
+  }, 0);
 
-const LO = await db.Execute(companyName, `EXEC sp_GenerateLastInOutNo`);
-const LastInOutNo = LO.jsonArray[0].NewLastInOutNo;
+  const LO = await db.Execute(companyName, `EXEC sp_GenerateLastInOutNo`);
+  const LastInOutNo = LO.jsonArray[0].NewLastInOutNo;
 
-await db.Execute(companyName, `
+  await db.Execute(
+    companyName,
+    `
   INSERT INTO LastInOut_M 
   (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo) 
   VALUES (
     '${LastInOutNo}', ${LastSumQty}, '${ListDataInOutNo[0].Userid}', 
     GETDATE(), 'Y', '${ListDataInOutNo[0].LastMatNo}'
   )
-`);
-await db.Execute(companyName, `
+`
+  );
+  await db.Execute(
+    companyName,
+    `
   INSERT INTO LastInOut_A 
   (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate) 
   VALUES (
     '${LastInOutNo}', GETDATE(), 'Out', 'BorrowOut', '${ListDataInOutNo[0].DepID}', NULL, 
     'Y', '${ListDataInOutNo[0].Userid}', GETDATE(), NULL, NULL
   )
-`);
-for (const item of ListDataInOutNo) {
-  try {
-
-    await db.Execute(companyName, `
+`
+  );
+  for (const item of ListDataInOutNo) {
+    try {
+      await db.Execute(
+        companyName,
+        `
       INSERT INTO LastInOut_D 
       (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo) 
       VALUES (
         '${LastInOutNo}', '${item.LastSize}', ${item.QtySide}, 'Y', 
         '${item.Userid}', GETDATE(), 'ZZZZ', '${item.LastMatNo}'
       )
-    `);
-
-  } catch (error) {
-    console.error("Lỗi khi xử lý dữ liệu LastInOutNo:", error);
+    `
+      );
+    } catch (error) {
+      console.error("Lỗi khi xử lý dữ liệu LastInOutNo:", error);
+    }
   }
-}
 
   return {
     status: "Completed",
@@ -293,13 +303,11 @@ for (const item of ListDataInOutNo) {
   };
 };
 
-
-
 exports.getInfoPhom = async (companyname, LastMatNo) => {
   try {
     const results = await db.Execute(
       companyname,
-        `SELECT 
+      `SELECT 
     LastMatNo,
     LastName,
     LastType,
@@ -571,7 +579,6 @@ exports.updatePhom = async (
   companyname
 ) => {
   try {
-   
     //Insert
     const results = await db.Execute(
       companyname,
@@ -690,7 +697,8 @@ exports.TaoPhieuMuonPhom = async (companyname, payload) => {
           @LastMatNo = '${payload.LastMatNo}',
           @isConfirm = 0,
           @StateLastBill = 0,
-          @OfficerId = '${payload.OfficerId}'` );
+          @OfficerId = '${payload.OfficerId}'`
+    );
     const GetPhieuMuon = await db.Execute(
       companyname,
       `select * from Last_Data_Bill where DepID='${payload.DepID}' and 
@@ -755,11 +763,11 @@ exports.LayPhieuMuonPhom = async (companyname, payload) => {
   try {
     // const results = await db.Execute(
     //   companyname,
-    //   `select * from Last_Data_Bill where CONVERT(date, DateBorrow) = '${payload.DateBorrow}' 
-    //   and DepID = '${payload.DepID}' and Userid='${payload.UserID}' 
+    //   `select * from Last_Data_Bill where CONVERT(date, DateBorrow) = '${payload.DateBorrow}'
+    //   and DepID = '${payload.DepID}' and Userid='${payload.UserID}'
     //   and LastMatNo='${payload.LastMatNo}'`
     // );
-        const results = await db.Execute(
+    const results = await db.Execute(
       companyname,
       `select * from Last_Data_Bill where ID_bill='${payload.ID_BILL}'`
     );
@@ -781,7 +789,7 @@ exports.LayPhieuMuonPhom = async (companyname, payload) => {
         status: "Success",
         statusCode: 200,
         data: getDetailsBill,
-        infoBill:results.jsonArray[0],
+        infoBill: results.jsonArray[0],
         message: "Lấy phiếu mượn thành công.",
       };
     }
@@ -892,17 +900,17 @@ WHERE ldb.ID_bill = '${payload.ID_BILL}';`
           rb.ID_BILL = ldb.ID_bill
           where rb.ID_BILL='${results.jsonArray[0].ID_bill}'`
       );
-       const lastdatabill = await db.Execute(
-      companyname,
-      `select * from Last_Data_Bill where ID_bill='${payload.ID_BILL}'`
-    );
+      const lastdatabill = await db.Execute(
+        companyname,
+        `select * from Last_Data_Bill where ID_bill='${payload.ID_BILL}'`
+      );
       return {
         status: "Success",
         statusCode: 200,
         data: {
           results: results.jsonArray,
           getReturnBill: getReturnBill.jsonArray,
-          lastdatabill: lastdatabill.jsonArray, 
+          lastdatabill: lastdatabill.jsonArray,
         },
         message: "Lấy phiếu mượn thành công.",
       };
@@ -994,12 +1002,14 @@ exports.checkRFIDinBrBill = async (companyname, payload) => {
   }
 };
 
-
 exports.submitReturnPhom = async (companyname, payload) => {
-    console.log("DEBUG payload:", JSON.stringify(payload)); // 👈 thêm dòng này
+  console.log("DEBUG payload:", JSON.stringify(payload)); // 👈 thêm dòng này
   try {
     // Kiểm tra phiếu trả có tồn tại
-    const checkBillBr = await db.Execute(companyname, `SELECT * FROM Return_Bill WHERE ID_BILL = '${payload.data[0].ID_bill}'`);
+    const checkBillBr = await db.Execute(
+      companyname,
+      `SELECT * FROM Return_Bill WHERE ID_BILL = '${payload.data[0].ID_bill}'`
+    );
     if (checkBillBr.rowCount !== 0) {
       return {
         status: "Error",
@@ -1017,7 +1027,7 @@ exports.submitReturnPhom = async (companyname, payload) => {
 
       if (checkExitsRFIDinBill.rowCount != 0) {
         console.log(`RFID ${item.RFID} đã được scan trả trước đó, bỏ qua.`);
-        continue; 
+        continue;
       }
       await db.Execute(
         companyname,
@@ -1029,14 +1039,19 @@ exports.submitReturnPhom = async (companyname, payload) => {
         companyname,
         `UPDATE Last_Data_Binding SET isOut = 0 WHERE RFID = '${item.RFID}'`
       );
-      resultsInsert.push(item.RFID); 
+      resultsInsert.push(item.RFID);
     }
 
-    await db.Execute(companyname,`INSERT Return_Bill (ID_Return,ID_BILL, Userid, totalQuantityBorrow, totalQuantityReturn, isConfirm, ReturnRequestDate)
+    await db.Execute(
+      companyname,
+      `INSERT Return_Bill (ID_Return,ID_BILL, Userid, totalQuantityBorrow, totalQuantityReturn, isConfirm, ReturnRequestDate)
       VALUES ('${payload.data[0].ID_bill}','${payload.data[0].ID_bill}', '${payload.data[0].Userid}', ${payload.data[0].TotalScanOut}, ${resultsInsert.length}, 0, GETDATE())
-      `);
+      `
+    );
 
-    const DataLastInOut = await db.Execute(companyname, `SELECT 
+    const DataLastInOut = await db.Execute(
+      companyname,
+      `SELECT 
         ldb.LastMatNo,
         ldb.LastSize,
         count(*) as lastsum,
@@ -1049,26 +1064,43 @@ exports.submitReturnPhom = async (companyname, payload) => {
         dlsr.RFID = ldb.RFID
       where dlsr.ID_Return='${payload.data[0].ID_bill}'
       GROUP BY 
-        ldb.LastMatNo, ldb.LastSize;`);
-    
-    const LastInOutNo = await db.Execute(companyname, `EXEC sp_GenerateLastInOutNo`);
+        ldb.LastMatNo, ldb.LastSize;`
+    );
+
+    const LastInOutNo = await db.Execute(
+      companyname,
+      `EXEC sp_GenerateLastInOutNo`
+    );
 
     const NewLastInOutNo = LastInOutNo.jsonArray[0].NewLastInOutNo;
     const newDetaLastInOut = DataLastInOut.jsonArray;
-    console.log("LastInOutNo:", newDetaLastInOut,'data',NewLastInOutNo);
-    await db.Execute(companyname, `
+    console.log("LastInOutNo:", newDetaLastInOut, "data", NewLastInOutNo);
+    await db.Execute(
+      companyname,
+      `
       INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
-      VALUES ('${NewLastInOutNo}', ${parseFloat((payload.data[0].TotalScanOut)/2)}, '${payload.data[0].Userid}', GETDATE(), 'Y', '${newDetaLastInOut[0].LastMatNo}')
-    `);
-    await db.Execute(companyname, `
+      VALUES ('${NewLastInOutNo}', ${parseFloat(
+        payload.data[0].TotalScanOut / 2
+      )}, '${payload.data[0].Userid}', GETDATE(), 'Y', '${
+        newDetaLastInOut[0].LastMatNo
+      }')
+    `
+    );
+    await db.Execute(
+      companyname,
+      `
       INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
       VALUES ('${NewLastInOutNo}', GETDATE(), 'Return', 'BorrowReturn', '${payload.data[0].DepID}', NULL, 'Y', '${payload.data[0].Userid}', GETDATE(), NULL, NULL)
-    `);
+    `
+    );
     for (const item of newDetaLastInOut) {
-      await db.Execute(companyname, `
+      await db.Execute(
+        companyname,
+        `
         INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
         VALUES ('${NewLastInOutNo}', '${item.LastSize}', ${item.LastQty}, 'Y', '${payload.data[0].Userid}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')
-      `);
+      `
+      );
     }
     return {
       status: "Success",
@@ -1076,7 +1108,6 @@ exports.submitReturnPhom = async (companyname, payload) => {
       message: "Xử lý return bill thành công",
       data: resultsInsert,
     };
-
   } catch (error) {
     console.error("Lỗi khi xử lý return bill:", error);
     return {
@@ -1120,7 +1151,7 @@ exports.confirmBorrowBill = async (companyname, payload) => {
       message: "Lỗi khi xác nhận phiếu mượn.",
     };
   }
-}
+};
 
 exports.getBorrowBillByUser = async (companyname, payload) => {
   try {
@@ -1174,5 +1205,158 @@ exports.getBorrowBillByUser = async (companyname, payload) => {
       message: "Lỗi khi lấy phiếu mượn.",
     };
   }
-}
+};
 
+exports.getAllReturnBill = async (companyname, payload) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT 
+    rb.ID_Return, 
+    rb.ID_BILL,
+    ldb.DepID,
+    bdep.DepName,
+    
+    rb.Userid, 
+    bu.USERNAME AS BorrowerName,          -- Người mượn
+
+    ldb.OfficerId,
+    officer.USERNAME AS OfficerName,      -- Cán bộ xử lý
+
+    ldb.LastMatNo, 
+    ldb.DateBorrow, 
+    rb.ReturnRequestDate,
+    
+    ldb.DateReceive,
+    rb.totalQuantityBorrow, 
+    rb.totalQuantityReturn, 
+    rb.isConfirm,                         -- Trạng thái xác nhận đơn trả
+
+    ldb.StateLastBill,
+
+    COALESCE(dlsr.TotalRFIDScanned, 0) AS TotalRFIDScanned  -- Số RFID đã quét
+
+FROM Return_Bill rb
+JOIN Last_Data_Bill ldb ON rb.ID_BILL = ldb.ID_bill
+LEFT JOIN Busers bu ON rb.Userid = bu.USERID
+LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
+LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID
+LEFT JOIN (
+    SELECT ID_Return, COUNT(*) AS TotalRFIDScanned
+    FROM Details_Last_Scan_Return
+    GROUP BY ID_Return
+) dlsr ON rb.ID_Return = dlsr.ID_Return;`
+    );
+    console.log("results", results);
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 400,
+        data: [],
+        message: "Không có phiếu trả nào",
+      };
+    } else {
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: results.jsonArray,
+        message: "Lấy phiếu trả thành công.",
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi khi lấy phiếu trả:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy phiếu trả.",
+    };
+  }
+};
+
+exports.getAllPhomManagement = async (companyname, payload) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `SELECT
+    ldb.LastNo,
+    ldb.LastSize,
+
+    -- RFID dạng mảng cho bản SQL Server cũ
+    STUFF((
+        SELECT ',' + ldb2.RFID
+        FROM Last_Data_Binding ldb2
+        WHERE ldb2.LastNo = ldb.LastNo AND ldb2.LastSize = ldb.LastSize
+        FOR XML PATH(''), TYPE
+    ).value('.', 'NVARCHAR(MAX)'), 1, 1, '') AS RFID_List,
+
+    -- Original columns
+    MIN(ldb.LastMatNo)   AS LastMatNo,
+    MIN(ldb.LastName)    AS LastName,
+    MIN(ldb.Material)    AS Material,
+    MIN(ldb.LastType)    AS LastType,
+    MIN(ldb.LastSide)    AS LastSide,
+    MIN(ldb.DateIn)      AS DateIn,
+    MIN(ldb.UserID)      AS UserID,
+    MIN(ldb.ShelfName)   AS ShelfName,
+
+    -- Count of left/right
+    SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS QtyLeft,
+    SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS QtyRight,
+
+    -- Number of valid pairs
+    CASE 
+        WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) 
+           <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+        THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+        ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+    END AS TotalPairs,
+
+    -- Total quantity and in-stock quantity
+    COUNT(*) AS TotalQty,
+    SUM(CASE WHEN ldb.isOut = 0 THEN 1 ELSE 0 END) AS QtyInStock
+
+FROM
+    Last_Data_Binding ldb
+GROUP BY
+    ldb.LastNo,
+    ldb.LastSize
+HAVING
+    (
+        CASE 
+            WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) 
+               <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+            THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+            ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+        END
+    ) > 0
+ORDER BY
+    ldb.LastNo,
+    ldb.LastSize;
+`
+    );
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 400,
+        data: [],
+        message: "Không có phom nào",
+      };
+    } else {
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: results.jsonArray,
+        message: "Lấy danh sách phom thành công.",
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy danh sách phom.",
+    };
+  }
+}
