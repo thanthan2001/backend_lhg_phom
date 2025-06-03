@@ -323,6 +323,27 @@ exports.getBorrowBill = async (req, res) => {
   }
 }
 
+exports.getAllReturnBill = async (req, res) => {
+  const payload = req.body;
+  console.log("Payload:", payload); 
+  const companyName = payload.companyName;
+  console.log("CompanyName:", companyName); 
+
+  try {
+    const result = await phomModel.getAllReturnBill(companyName, payload);
+    console.log("Kết quả:", result);
+    if (!result) {
+      res.status(500).json("No return bill found");
+    } else {
+      res.status(200).json(result);
+    }
+  } catch (error) {
+    console.error("Lỗi từ controller getAllReturnBill:", error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+
 exports.confirmBorrowBill = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;
@@ -347,3 +368,15 @@ exports.getBorrowBillByUser = async (req, res) => {
     res.status(200).json(result);
   }
 }
+
+exports.getAllPhomManagement = async (req, res) => {
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.getAllPhomManagement(companyName);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
