@@ -313,7 +313,27 @@ exports.getInfoPhom = async (companyname, LastMatNo) => {
     LastType,
     Material,
     LastSize,
-    COUNT(CASE WHEN isOut IS NULL OR isOut <> 1 THEN 1 END) AS SoLuongTonKho
+
+    -- Tính số lượng bên trái còn trong kho
+    SUM(CASE 
+            WHEN (isOut IS NULL OR isOut <> 1) AND LastSide = 'Left' THEN 1 
+            ELSE 0 
+        END) AS QtyLeft,
+
+    -- Tính số lượng bên phải còn trong kho
+    SUM(CASE 
+            WHEN (isOut IS NULL OR isOut <> 1) AND LastSide = 'Right' THEN 1 
+            ELSE 0 
+        END) AS QtyRight,
+
+    -- Tính số lượng đôi phom còn trong kho
+    CASE 
+        WHEN SUM(CASE WHEN (isOut IS NULL OR isOut <> 1) AND LastSide = 'Left' THEN 1 ELSE 0 END) 
+           <= SUM(CASE WHEN (isOut IS NULL OR isOut <> 1) AND LastSide = 'Right' THEN 1 ELSE 0 END)
+        THEN SUM(CASE WHEN (isOut IS NULL OR isOut <> 1) AND LastSide = 'Left' THEN 1 ELSE 0 END)
+        ELSE SUM(CASE WHEN (isOut IS NULL OR isOut <> 1) AND LastSide = 'Right' THEN 1 ELSE 0 END)
+    END AS SoLuongTonKho
+
 FROM 
     Last_Data_Binding
 WHERE 
@@ -1295,7 +1315,6 @@ exports.getAllPhomManagement = async (companyname, payload) => {
     MIN(ldb.LastName)    AS LastName,
     MIN(ldb.Material)    AS Material,
     MIN(ldb.LastType)    AS LastType,
-    MIN(ldb.LastSide)    AS LastSide,
     MIN(ldb.DateIn)      AS DateIn,
     MIN(ldb.UserID)      AS UserID,
     MIN(ldb.ShelfName)   AS ShelfName,
@@ -1321,15 +1340,6 @@ FROM
 GROUP BY
     ldb.LastNo,
     ldb.LastSize
-HAVING
-    (
-        CASE 
-            WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) 
-               <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
-            THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
-            ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
-        END
-    ) > 0
 ORDER BY
     ldb.LastNo,
     ldb.LastSize;
