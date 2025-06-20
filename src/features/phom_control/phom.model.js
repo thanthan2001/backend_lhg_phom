@@ -55,7 +55,7 @@ exports.getBorrowBill = async (companyname) => {
       `SELECT 
     dldb.ID_bill, 
     dldb.DepID,
-	bdep.DepName,
+    bdep.DepName,
     ldb.Userid, 
     bu.USERNAME AS BorrowerName,         -- Người mượn
     ldb.OfficerId, 
@@ -67,12 +67,55 @@ exports.getBorrowBill = async (companyname) => {
     ldb.DateBorrow, 
     ldb.DateReceive, 
     ldb.isConfirm,
-	ldb.StateLastBill
+    ldb.StateLastBill,
+
+    -- Thêm ToTalPhomNotBinding
+    ISNULL(ldb.ToTalPhomNotBinding, 0) AS ToTalPhomNotBinding,
+
+    -- Số lượng đôi phom đã scan cho mượn
+    ISNULL(ScannedData.TotalPairsScanned, 0) AS TotalPairsScanned,
+
+    -- Chi tiết số lượng phom trái/phải đã scan
+    ISNULL(ScannedData.QtyLeftScanned, 0) AS QtyLeftScanned,
+    ISNULL(ScannedData.QtyRightScanned, 0) AS QtyRightScanned,
+
+    -- Tính số lượng cho mượn (SL cho mượn)
+    ISNULL(ldb.ToTalPhomNotBinding, 0) + ISNULL(ScannedData.TotalPairsScanned, 0) AS SoLuongChoMuon
+
 FROM Last_Data_Bill ldb
 JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
 LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
 LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
-LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID;`
+LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID
+
+-- Join với dữ liệu đã scan cho mượn (StateScan = 0)
+LEFT JOIN (
+    SELECT
+        lds.ID_bill,
+        ldb.LastMatNo,
+        ldb.LastSize,
+
+        -- Đếm số phom bên trái và bên phải đã scan cho mượn
+        SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS QtyLeftScanned,
+        SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS QtyRightScanned,
+
+        -- Tính số lượng đôi phom đã scan
+        CASE 
+            WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+               <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+            THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+            ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+        END AS TotalPairsScanned
+
+    FROM Last_Detail_Scan_Out lds
+    JOIN Last_Data_Binding ldb ON lds.RFID = ldb.RFID
+    WHERE lds.StateScan = 0 AND ldb.isOut = 1 -- Chỉ lấy phom đã scan xuất
+
+    GROUP BY lds.ID_bill, ldb.LastMatNo, ldb.LastSize
+) AS ScannedData 
+    ON dldb.ID_bill = ScannedData.ID_bill 
+    AND dldb.LastMatNo = ScannedData.LastMatNo 
+    AND dldb.LastSize = ScannedData.LastSize`
     );
     if (results.rowCount === 0) {
       return {
