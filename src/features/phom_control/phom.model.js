@@ -217,6 +217,12 @@ exports.saveBill = async (companyName, body) => {
       });
     }
   }
+
+  await db.Execute(
+    companyName,
+    `UPDATE Last_Data_Bill SET ToTalPhomNotBinding = '${body.ToTalPhomNotBinding}' WHERE ID_bill = '${scannedRfidDetailsList[0].ID_BILL}'`
+  );
+
   const dataInsertLastInOutNo = await db.Execute(
     companyName,
     `
@@ -389,6 +395,7 @@ exports.getLastMatNo = async (companyname) => {
     };
   }
 };
+
 exports.getPhomByLastMatNo = async (companyname, LastMatNo) => {
   try {
     const results = await db.Execute(
@@ -526,54 +533,121 @@ WHERE lnm.LastName = '${TenPhom}';
   }
 };
 
-exports.bindingPhom = async (
-  RFID,
-  LastMatNo,
-  LastName,
-  LastNo,
-  LastType,
-  Material,
-  LastSize,
-  LastSide,
-  UserID,
-  ShelfName,
-  DateIn,
-  companyname
-) => {
-  try {
-    // Check RFID Exists
-    const checkRFIDExists = await db.Execute(
-      companyname,
-      `SELECT * FROM Last_Data_Binding WHERE RFID = '${RFID}'`
-    );
-    if (checkRFIDExists && checkRFIDExists.jsonArray.length > 0) {
-      return {
-        status: "Error",
-        statusCode: 400,
-        data: [],
-        message: "RFID đã tồn tại trong hệ thống.",
-      };
-    }
-    //Insert
-    const results = await db.Execute(
-      companyname,
-      `
-      INSERT INTO Last_Data_Binding (RFID, LastMatNo, LastName,LastNo , LastType, Material, LastSize, LastSide, UserID, ShelfName, DateIn)
-      VALUES ('${RFID}', '${LastMatNo}', '${LastName}', '${LastNo}' , '${LastType}', '${Material}', '${LastSize}', '${LastSide}', '${UserID}', '${ShelfName}', '${DateIn}')
-      `
-    );
+// exports.bindingPhom = async (
+//   // RFID,
+//   // LastMatNo,
+//   // LastName,
+//   // LastNo,
+//   // LastType,
+//   // Material,
+//   // LastSize,
+//   // LastSide,
+//   // UserID,
+//   // ShelfName,
+//   // DateIn,
+//   companyname,
+//   payload
+// ) => {
+//   try {
+//     // Check RFID Exists
+//     for (const item of payload.details) {
+//       const checkRFIDExists = await db.Execute(
+//         companyname,
+//         `SELECT * FROM Last_Data_Binding WHERE RFID = '${item.RFID}'`
+//       );
+//       if (checkRFIDExists && checkRFIDExists.jsonArray.length > 0) {
+//         return {
+//           status: "Error",
+//           statusCode: 400,
+//           data: [],
+//           message: "RFID đã tồn tại trong hệ thống.",
+//         };
+//       }
+//       //Insert
+//       const results = await db.Execute(
+//         companyname,
+//         `
+//       INSERT INTO Last_Data_Binding (RFID, LastMatNo, LastName,LastNo , LastType, Material, LastSize, LastSide, UserID, ShelfName, DateIn)
+//       VALUES ('${item.RFID}', '${item.LastMatNo}', '${item.LastName}', '${item.LastNo}' , '${item.LastType}', '${item.Material}', '${item.LastSize}', '${item.LastSide}', '${item.UserID}', '${item.ShelfName}', '${item.DateIn}')
+//       `
+//       );
 
-    //Data Inserted
-    const insertedData = await db.Execute(
-      companyname,
-      `SELECT * FROM Last_Data_Binding WHERE RFID = '${RFID}'`
-    );
+//       //Data Inserted
+//       const insertedData = await db.Execute(
+//         companyname,
+//         `SELECT * FROM Last_Data_Binding WHERE RFID = '${item.RFID}'`
+//       );
+//     }
+//     return {
+//       status: "Success",
+//       statusCode: 200,
+//       data: insertedData.jsonArray,
+//       message: "Gán phom thành công.",
+//     };
+//   } catch (error) {
+//     console.error("Lỗi khi gán phom:", error);
+//     return {
+//       status: "Error",
+//       statusCode: 500,
+//       data: [],
+//       message: "Lỗi khi gán phom.",
+//     };
+//   }
+// };
+exports.bindingPhom = async (companyname, payload) => {
+  try {
+    let successCount = 0;
+    let failCount = 0;
+    let failedRFIDs = [];
+    let insertedItems = [];
+
+    for (const item of payload.details) {
+      const checkRFIDExists = await db.Execute(
+        companyname,
+        `SELECT * FROM Last_Data_Binding WHERE RFID = '${item.RFID}'`
+      );
+
+      if (checkRFIDExists && checkRFIDExists.jsonArray.length > 0) {
+        failCount++;
+        failedRFIDs.push(item.RFID);
+        continue;
+      }
+
+      // Insert nếu RFID chưa tồn tại
+      await db.Execute(
+        companyname,
+        `
+        INSERT INTO Last_Data_Binding 
+        (RFID, LastMatNo, LastName, LastNo, LastType, Material, LastSize, LastSide, UserID, ShelfName, DateIn)
+        VALUES (
+          '${item.RFID}', '${item.LastMatNo}', '${item.LastName}', '${item.LastNo}',
+          '${item.LastType}', '${item.Material}', '${item.LastSize}', '${item.LastSide}',
+          '${item.UserID}', '${item.ShelfName}', '${item.DateIn}'
+        )
+        `
+      );
+
+      const insertedData = await db.Execute(
+        companyname,
+        `SELECT * FROM Last_Data_Binding WHERE RFID = '${item.RFID}'`
+      );
+
+      if (insertedData && insertedData.jsonArray.length > 0) {
+        successCount++;
+        insertedItems.push(insertedData.jsonArray[0]);
+      }
+    }
 
     return {
       status: "Success",
       statusCode: 200,
-      data: insertedData,
-      message: "Gán phom thành công.",
+      data: insertedItems,
+      message: "Gán phom hoàn tất.",
+      summary: {
+        successCount,
+        failCount,
+        failedRFIDs,
+      },
     };
   } catch (error) {
     console.error("Lỗi khi gán phom:", error);
@@ -585,24 +659,26 @@ exports.bindingPhom = async (
     };
   }
 };
-exports.updatePhom = async (
-  RFID,
-  LastMatNo,
-  LastName,
-  LastType,
-  Material,
-  LastSize,
-  LastSide,
-  UserID,
-  ShelfName,
-  DateIn,
-  companyname
-) => {
-  try {
-    //Insert
-    const results = await db.Execute(
-      companyname,
-      `
+
+exports.updatePhom = async (companyname, items) => {
+  const successList = [];
+  const failureList = [];
+
+  const updatePromises = items.map((item) => {
+    const {
+      RFID,
+      LastMatNo,
+      LastName,
+      LastType,
+      Material,
+      LastSize,
+      LastSide,
+      UserID,
+      ShelfName,
+      DateIn,
+    } = item;
+
+    const sqlQuery = `
       UPDATE Last_Data_Binding SET
         LastMatNo = '${LastMatNo}',
         LastName = '${LastName}',
@@ -614,33 +690,40 @@ exports.updatePhom = async (
         ShelfName = '${ShelfName}',
         DateIn = '${DateIn}'
       WHERE RFID = '${RFID}'
-      `
-    );
+    `;
 
-    //Data Inserted
-    const insertedData = await db.Execute(
-      companyname,
-      `SELECT * FROM Last_Data_Binding WHERE RFID = '${RFID}' and 
-      LastMatNo = '${LastMatNo}' and LastSize = '${LastSize}' 
-      and LastSide = '${LastSide}' and LastName = '${LastName}' and
-      UserID = '${UserID}' and ShelfName = '${ShelfName}'`
-    );
+    return db.Execute(companyname, sqlQuery);
+  });
 
-    return {
-      status: "Success",
-      statusCode: 200,
-      data: insertedData,
-      message: "Gán phom thành công.",
-    };
-  } catch (error) {
-    console.error("Lỗi khi gán phom:", error);
-    return {
-      status: "Error",
-      statusCode: 500,
-      data: [],
-      message: "Lỗi khi gán phom.",
-    };
-  }
+  const results = await Promise.allSettled(updatePromises);
+
+  results.forEach((result, index) => {
+    const originalItem = items[index];
+
+    if (result.status === "fulfilled") {
+      successList.push({
+        rfid: originalItem.rfid,
+        message: "Cập nhật thành công.",
+      });
+    } else {
+      failureList.push({
+        rfid: originalItem.rfid,
+        error: result.reason.message || "Lỗi không xác định từ CSDL",
+      });
+    }
+  });
+
+  // Trả về một đối tượng chứa cả hai danh sách
+  return {
+    statusCode: 200,
+    message: "Hoàn tất xử lý lô cập nhật.",
+    data: {
+      successes: successList,
+      failures: failureList,
+      totalSuccess: successList.length,
+      totalFailure: failureList.length,
+    },
+  };
 };
 exports.ScanPhomMuonTra = async (companyname, RFID) => {
   try {
@@ -903,8 +986,8 @@ exports.getOldBill = async (companyname, payload) => {
     (SELECT COUNT(DISTINCT RFID) 
      FROM Last_Detail_Scan_Out 
      WHERE ID_bill = ldb.ID_bill) AS TotalScanOut
-FROM Last_Data_Bill ldb
-WHERE ldb.ID_bill = '${payload.ID_BILL}';`
+    FROM Last_Data_Bill ldb
+    WHERE ldb.ID_bill = '${payload.ID_BILL}';`
     );
     if (results.rowCount === 0) {
       return {
@@ -991,6 +1074,7 @@ exports.confirmReturnPhom = async (companyname, payload) => {
 };
 
 exports.checkRFIDinBrBill = async (companyname, payload) => {
+  console.log("DEBUG payload:", JSON.stringify(payload)); // 👈 thêm dòng này
   try {
     const results = await db.Execute(
       companyname,
