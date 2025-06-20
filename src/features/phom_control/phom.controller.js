@@ -35,6 +35,7 @@ exports.getSizeNotBinding = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
 exports.getInforPhomBinding = async (req, res) => {
   const companyName = req.body.companyName;
   const result = await phomModel.getInforPhomBinding(companyName);
@@ -119,31 +120,32 @@ exports.searchPhomBinding = async (req, res) => {
 
 exports.bindingPhom = async (req, res) => {
   const companyName = req.body.companyName;
-  const RFID = req.body.RFID;
-  const LastMatNo = req.body.LastMatNo;
-  const LastName = req.body.LastName;
-  const LastNo = req.body.LastNo;
-  const LastType = req.body.LastType;
-  const Material = req.body.Material;
-  const LastSize = req.body.LastSize;
-  const LastSide = req.body.LastSide;
-  const UserID = req.body.UserID;
-  const ShelfName = req.body.ShelfName;
-  const DateIn = req.body.DateIn;
-
+  // const RFID = req.body.RFID;
+  // const LastMatNo = req.body.LastMatNo;
+  // const LastName = req.body.LastName;
+  // const LastNo = req.body.LastNo;
+  // const LastType = req.body.LastType;
+  // const Material = req.body.Material;
+  // const LastSize = req.body.LastSize;
+  // const LastSide = req.body.LastSide;
+  // const UserID = req.body.UserID;
+  // const ShelfName = req.body.ShelfName;
+  // const DateIn = req.body.DateIn;
+  const payload = req.body;
   const result = await phomModel.bindingPhom(
-    RFID,
-    LastMatNo,
-    LastName,
-    LastNo,
-    LastType,
-    Material,
-    LastSize,
-    LastSide,
-    UserID,
-    ShelfName,
-    DateIn,
-    companyName
+    // RFID,
+    // LastMatNo,
+    // LastName,
+    // LastNo,
+    // LastType,
+    // Material,
+    // LastSize,
+    // LastSide,
+    // UserID,
+    // ShelfName,
+    // DateIn,
+    companyName,
+    payload
   );
   if (!result) {
     res.status(500).json("No phom found");
@@ -153,39 +155,29 @@ exports.bindingPhom = async (req, res) => {
   }
 };
 exports.updatePhom = async (req, res) => {
-  const companyName = req.body.companyName;
-  const RFID = req.body.RFID;
-  const LastMatNo = req.body.LastMatNo;
-  const LastName = req.body.LastName;
-  const LastType = req.body.LastType;
-  const Material = req.body.Material;
-  const LastSize = req.body.LastSize;
-  const LastSide = req.body.LastSide;
-  const UserID = req.body.UserID;
-  const ShelfName = req.body.ShelfName;
-  const DateIn = req.body.DateIn;
+  const { companyName, details } = req.body;
 
-  const result = await phomModel.updatePhom(
-    RFID,
-    LastMatNo,
-    LastName,
-    LastType,
-    Material,
-    LastSize,
-    LastSide,
-    UserID,
-    ShelfName,
-    DateIn,
-    companyName
-  );
-  if (!result) {
-    res.status(500).json("No phom found");
+  if (
+    !companyName ||
+    !details ||
+    !Array.isArray(details) ||
+    details.length === 0
+  ) {
+    return res.status(400).json({
+      statusCode: 400,
+      message:
+        "Dữ liệu không hợp lệ. Cần 'companyName' và mảng 'details' không được rỗng.",
+    });
+  }
+
+  const result = await phomModel.updatePhom(companyName, details);
+
+  if (result.statusCode === 500) {
+    res.status(500).json(result);
   } else {
-    console.log(result);
     res.status(200).json(result);
   }
 };
-
 exports.ScanPhomMuonTra = async (req, res) => {
   const companyName = req.body.companyName;
   const RFID = req.body.epc;
