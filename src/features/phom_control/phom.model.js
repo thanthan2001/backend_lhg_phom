@@ -69,18 +69,15 @@ exports.getBorrowBill = async (companyname) => {
     ldb.isConfirm,
     ldb.StateLastBill,
 
-    -- Thêm ToTalPhomNotBinding
-    ISNULL(ldb.ToTalPhomNotBinding, 0) AS ToTalPhomNotBinding,
+    -- ToTalPhomNotBinding ép kiểu thập phân 1 chữ số
+    CAST(ISNULL(ldb.ToTalPhomNotBinding, 0) AS DECIMAL(10,1)) AS ToTalPhomNotBinding,
 
-    -- Số lượng đôi phom đã scan cho mượn
-    ISNULL(ScannedData.TotalPairsScanned, 0) AS TotalPairsScanned,
+    -- Số lượng đôi phom đã scan cho mượn (TotalPairsScanned)
+    CAST(ISNULL(ScannedData.TotalPairsScanned, 0) AS DECIMAL(10,1)) AS TotalPairsScanned,
 
     -- Chi tiết số lượng phom trái/phải đã scan
-    ISNULL(ScannedData.QtyLeftScanned, 0) AS QtyLeftScanned,
-    ISNULL(ScannedData.QtyRightScanned, 0) AS QtyRightScanned,
-
-    -- Tính số lượng cho mượn (SL cho mượn)
-    ISNULL(ldb.ToTalPhomNotBinding, 0) + ISNULL(ScannedData.TotalPairsScanned, 0) AS SoLuongChoMuon
+    CAST(ISNULL(ScannedData.QtyLeftScanned, 0) AS DECIMAL(10,1)) AS QtyLeftScanned,
+    CAST(ISNULL(ScannedData.QtyRightScanned, 0) AS DECIMAL(10,1)) AS QtyRightScanned
 
 FROM Last_Data_Bill ldb
 JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
@@ -99,18 +96,23 @@ LEFT JOIN (
         SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS QtyLeftScanned,
         SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS QtyRightScanned,
 
-        -- Tính số lượng đôi phom đã scan
-        CASE 
-            WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
-               <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
-            THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
-            ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
-        END AS TotalPairsScanned
+        -- Tính số lượng đôi phom đã scan (có thể là 0.5 nếu lệch 1 bên)
+        CAST(
+            (CASE 
+                WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                   <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+            END)
+            +
+            (ABS(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) - 
+                 SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)) * 0.5)
+            AS DECIMAL(10,1)
+        ) AS TotalPairsScanned
 
     FROM Last_Detail_Scan_Out lds
     JOIN Last_Data_Binding ldb ON lds.RFID = ldb.RFID
-    WHERE lds.StateScan = 0 AND ldb.isOut = 1 -- Chỉ lấy phom đã scan xuất
-
+    WHERE lds.StateScan = 0 AND ldb.isOut = 1
     GROUP BY lds.ID_bill, ldb.LastMatNo, ldb.LastSize
 ) AS ScannedData 
     ON dldb.ID_bill = ScannedData.ID_bill 
@@ -845,54 +847,41 @@ exports.TaoPhieuMuonPhom = async (companyname, payload) => {
           @StateLastBill = 0,
           @OfficerId = '${payload.OfficerId}'`
     );
-    const GetPhieuMuon = await db.Execute(
-      companyname,
-      `select * from Last_Data_Bill where DepID='${payload.DepID}' and 
-        DateBorrow='${payload.DateBorrow}' and DateReceive='${payload.DateReceive}' and LastMatNo='${payload.LastMatNo}'`
-    );
-    if (GetPhieuMuon.rowCount === 0) {
+
+    const ID_Bill = TaoPhieuMuon.jsonArray[0].ID_bill;
+    if (ID_Bill === null || ID_Bill === undefined) {
       return {
         status: "Error",
         statusCode: 400,
         data: [],
-        message: "Không tìm thấy phiếu mượn.",
+        message: "Không tìm thấy ID_Bill.",
       };
     } else {
-      const ID_Bill = GetPhieuMuon.jsonArray[0].ID_bill;
-      if (ID_Bill === null || ID_Bill === undefined) {
-        return {
-          status: "Error",
-          statusCode: 400,
-          data: [],
-          message: "Không tìm thấy ID_Bill.",
-        };
-      } else {
-        // Tạo Đơn Mượn Chi Tiết
-        for (const item of payload.Details) {
-          const TaoPhieuMuonCT = await db.Execute(
-            companyname,
-            `EXEC Insert_Detail_Last_Data_Bill
+      // Tạo Đơn Mượn Chi Tiết
+      for (const item of payload.Details) {
+        const TaoPhieuMuonCT = await db.Execute(
+          companyname,
+          `EXEC Insert_Detail_Last_Data_Bill
                 @ID_bill = '${ID_Bill}',
                 @DepID = '${payload.DepID}',
-                @LastMatNo = '${payload.LastMatNo}',
+                @LastMatNo = '${item.LastMatNo}',
                 @LastName = N'${item.LastName}',  -- dùng N'' nếu có tiếng Việt
                 @LastSize = '${item.LastSize}',
                 @LastSum = ${item.LastSum};`
-          );
-        }
+        );
       }
-      const results = await db.Execute(
-        companyname,
-        `select * from Last_Data_Bill where ID_bill = '${ID_Bill}'`
-      );
-      if (results.rowCount !== 0 && results.jsonArray.length > 0) {
-        return {
-          status: "Success",
-          statusCode: 200,
-          data: results.jsonArray,
-          message: "Tạo phiếu mượn thành công.",
-        };
-      }
+    }
+    const results = await db.Execute(
+      companyname,
+      `select * from Last_Data_Bill where ID_bill = '${ID_Bill}'`
+    );
+    if (results.rowCount !== 0 && results.jsonArray.length > 0) {
+      return {
+        status: "Success",
+        statusCode: 200,
+        data: results.jsonArray,
+        message: "Tạo phiếu mượn thành công.",
+      };
     }
   } catch (error) {
     console.error("Lỗi khi tạo phiếu mượn:", error);
@@ -1305,27 +1294,69 @@ exports.getBorrowBillByUser = async (companyname, payload) => {
     const results = await db.Execute(
       companyname,
       `SELECT 
-        ldb.ID_bill, 
-        ldb.DepID,
-        bdep.DepName,
-        ldb.Userid, 
-        bu.USERNAME AS BorrowerName,         -- Người mượn
-        ldb.OfficerId, 
-        officer.USERNAME AS OfficerName,     -- Người xử lý/Officer
-        ldb.LastMatNo, 
-        dldb.LastName, 
-        dldb.LastSize, 
-        dldb.LastSum,
-        ldb.DateBorrow, 
-        ldb.DateReceive, 
-        ldb.isConfirm,
-        ldb.StateLastBill
-      FROM Last_Data_Bill ldb
-      JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
-      LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
-      LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
-      LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID
-      WHERE ldb.Userid = '${payload}'`
+    dldb.ID_bill, 
+    dldb.DepID,
+    bdep.DepName,
+    ldb.Userid, 
+    bu.USERNAME AS BorrowerName,         -- Người mượn
+    ldb.OfficerId, 
+    officer.USERNAME AS OfficerName,     -- Người xử lý
+    ldb.LastMatNo, 
+    dldb.LastName, 
+    dldb.LastSize, 
+    dldb.LastSum,
+    ldb.DateBorrow, 
+    ldb.DateReceive, 
+    ldb.isConfirm,
+    ldb.StateLastBill,
+
+    -- Tổng số phom chưa binding
+    CAST(ISNULL(ldb.ToTalPhomNotBinding, 0) AS DECIMAL(10,1)) AS ToTalPhomNotBinding,
+
+    -- Phom đã scan
+    CAST(ISNULL(ScannedData.TotalPairsScanned, 0) AS DECIMAL(10,1)) AS TotalPairsScanned,
+    CAST(ISNULL(ScannedData.QtyLeftScanned, 0) AS DECIMAL(10,1)) AS QtyLeftScanned,
+    CAST(ISNULL(ScannedData.QtyRightScanned, 0) AS DECIMAL(10,1)) AS QtyRightScanned
+
+FROM Last_Data_Bill ldb
+JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
+LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
+LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
+LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID
+
+-- Join dữ liệu đã scan
+LEFT JOIN (
+    SELECT
+        lds.ID_bill,
+        ldb.LastMatNo,
+        ldb.LastSize,
+
+        SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS QtyLeftScanned,
+        SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS QtyRightScanned,
+
+        CAST(
+            (CASE 
+                WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                   <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+            END)
+            +
+            (ABS(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) - 
+                 SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)) * 0.5)
+            AS DECIMAL(10,1)
+        ) AS TotalPairsScanned
+
+    FROM Last_Detail_Scan_Out lds
+    JOIN Last_Data_Binding ldb ON lds.RFID = ldb.RFID
+    WHERE lds.StateScan = 0 AND ldb.isOut = 1
+    GROUP BY lds.ID_bill, ldb.LastMatNo, ldb.LastSize
+) AS ScannedData 
+    ON dldb.ID_bill = ScannedData.ID_bill 
+    AND dldb.LastMatNo = ScannedData.LastMatNo 
+    AND dldb.LastSize = ScannedData.LastSize
+
+WHERE ldb.Userid = '${payload}'`
     );
     console.log("results", results);
     if (results.rowCount === 0) {
@@ -1444,23 +1475,46 @@ exports.getAllPhomManagement = async (companyname, payload) => {
     MIN(ldb.LastType)    AS LastType,
     MIN(ldb.DateIn)      AS DateIn,
     MIN(ldb.UserID)      AS UserID,
-    MIN(ldb.ShelfName)   AS ShelfName,
 
     -- Count of left/right
-    SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS QtyLeft,
-    SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS QtyRight,
+    CAST(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyLeft,
+    CAST(SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyRight,
 
-    -- Number of valid pairs
-    CASE 
-        WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) 
-           <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
-        THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
-        ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
-    END AS TotalPairs,
+    -- Number of valid pairs (có thể lẻ 0.5 đôi nếu dư 1 chiếc)
+    CAST(
+        (CASE 
+            WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) 
+               <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+            THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+            ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+        END)
+        +
+        (ABS(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) - SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)) * 0.5)
+    AS DECIMAL(10,1)) AS TotalPairs,
 
-    -- Total quantity and in-stock quantity
+    -- Total quantity
     COUNT(*) AS TotalQty,
-    SUM(CASE WHEN ldb.isOut = 0 THEN 1 ELSE 0 END) AS QtyInStock
+
+    -- Số chiếc còn trong kho bên trái
+    CAST(SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyLeftInStock,
+
+    -- Số chiếc còn trong kho bên phải
+    CAST(SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyRightInStock,
+
+    -- Số đôi còn trong kho (QtyInStock tính theo đôi, có thể lẻ 0.5 đôi)
+    CAST(
+        (CASE 
+            WHEN SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) 
+               <= SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+            THEN SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+            ELSE SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+        END)
+        +
+        (ABS(
+            SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) - 
+            SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+        ) * 0.5)
+    AS DECIMAL(10,1)) AS QtyInStock
 
 FROM
     Last_Data_Binding ldb
@@ -1682,6 +1736,149 @@ exports.submitTransfer = async (companyname, payload) => {
       statusCode: 500,
       data: [],
       message: "Lỗi khi xử lý chuyển giao.",
+    };
+  }
+};
+
+exports.getBorrowPhomState = async (companyname, payload) => {
+  try {
+
+    // Câu lệnh 1: Lấy trạng thái tổng hợp của tất cả phom trong kho
+    const sqlQueryPhomTrongKho = `
+      SELECT
+          ldb.LastNo,
+          ldb.LastSize,
+          STUFF((
+              SELECT ',' + ldb2.RFID
+              FROM Last_Data_Binding ldb2
+              WHERE ldb2.LastNo = ldb.LastNo AND ldb2.LastSize = ldb.LastSize
+              FOR XML PATH(''), TYPE
+          ).value('.', 'NVARCHAR(MAX)'), 1, 1, '') AS RFID_List,
+          MIN(ldb.LastMatNo)   AS LastMatNo,
+          MIN(ldb.LastName)    AS LastName,
+          MIN(ldb.Material)    AS Material,
+          MIN(ldb.LastType)    AS LastType,
+          MIN(ldb.DateIn)      AS DateIn,
+          MIN(ldb.UserID)      AS UserID,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyLeft,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyRight,
+          CAST(
+              (CASE 
+                  WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) 
+                     <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                  THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                  ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+              END)
+              +
+              (ABS(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) - SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)) * 0.5)
+          AS DECIMAL(10,1)) AS TotalPairs,
+          COUNT(*) AS TotalQty,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyLeftInStock,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyRightInStock,
+          CAST(
+              (CASE 
+                  WHEN SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) 
+                     <= SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+                  THEN SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+                  ELSE SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+              END)
+              +
+              (ABS(
+                  SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) - 
+                  SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+              ) * 0.5)
+          AS DECIMAL(10,1)) AS QtyInStock
+      FROM
+          Last_Data_Binding ldb
+      GROUP BY
+          ldb.LastNo,
+          ldb.LastSize
+      ORDER BY
+          ldb.LastNo,
+          ldb.LastSize;
+    `;
+
+    // Câu lệnh 2: Lấy danh sách chi tiết các đơn mượn
+    const sqlQueryDonMuon = `
+      SELECT 
+          dldb.ID_bill, 
+          dldb.DepID,
+          bdep.DepName,
+          ldb.Userid, 
+          bu.USERNAME AS BorrowerName,
+          ldb.OfficerId, 
+          officer.USERNAME AS OfficerName,
+          ldb.LastMatNo, 
+          dldb.LastName, 
+          dldb.LastSize, 
+          dldb.LastSum,
+          ldb.DateBorrow, 
+          ldb.DateReceive, 
+          ldb.isConfirm,
+          ldb.StateLastBill,
+          CAST(ISNULL(ldb.ToTalPhomNotBinding, 0) AS DECIMAL(10,1)) AS ToTalPhomNotBinding,
+          CAST(ISNULL(ScannedData.TotalPairsScanned, 0) AS DECIMAL(10,1)) AS TotalPairsScanned,
+          CAST(ISNULL(ScannedData.QtyLeftScanned, 0) AS DECIMAL(10,1)) AS QtyLeftScanned,
+          CAST(ISNULL(ScannedData.QtyRightScanned, 0) AS DECIMAL(10,1)) AS QtyRightScanned
+      FROM Last_Data_Bill ldb
+      JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
+      LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
+      LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
+      LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID
+      LEFT JOIN (
+          SELECT
+              lds.ID_bill,
+              ldb.LastMatNo,
+              ldb.LastSize,
+              SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS QtyLeftScanned,
+              SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS QtyRightScanned,
+              CAST(
+                  (CASE 
+                      WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                         <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                      THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                      ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                  END)
+                  +
+                  (ABS(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) - 
+                       SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)) * 0.5)
+                  AS DECIMAL(10,1)
+              ) AS TotalPairsScanned
+          FROM Last_Detail_Scan_Out lds
+          JOIN Last_Data_Binding ldb ON lds.RFID = ldb.RFID
+          WHERE lds.StateScan = 0 AND ldb.isOut = 1
+          GROUP BY lds.ID_bill, ldb.LastMatNo, ldb.LastSize
+      ) AS ScannedData 
+          ON dldb.ID_bill = ScannedData.ID_bill 
+          AND dldb.LastMatNo = ScannedData.LastMatNo 
+          AND dldb.LastSize = ScannedData.LastSize;
+    `;
+    
+    // ----- THỰC THI SONG SONG 2 CÂU LỆNH -----
+    const [phomTrongKhoResult, donMuonResult] = await Promise.all([
+      db.Execute(companyname, sqlQueryPhomTrongKho),
+      db.Execute(companyname, sqlQueryDonMuon)
+    ]);
+
+    const responseData = {
+      danhSachPhomTrongKho: phomTrongKhoResult.jsonArray || [], 
+      danhSachDonMuon: donMuonResult.jsonArray || []
+    };
+
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: responseData,
+      message: "Lấy dữ liệu tổng quan thành công.",
+    };
+
+  } catch (error) {
+    console.error("Lỗi khi lấy dữ liệu tổng quan phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: null, // Trả về null hoặc một object rỗng trong trường hợp lỗi
+      message: "Lỗi máy chủ khi lấy dữ liệu tổng quan phom.",
     };
   }
 };
