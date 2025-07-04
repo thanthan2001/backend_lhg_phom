@@ -1739,3 +1739,146 @@ exports.submitTransfer = async (companyname, payload) => {
     };
   }
 };
+
+exports.getBorrowPhomState = async (companyname, payload) => {
+  try {
+
+    // Câu lệnh 1: Lấy trạng thái tổng hợp của tất cả phom trong kho
+    const sqlQueryPhomTrongKho = `
+      SELECT
+          ldb.LastNo,
+          ldb.LastSize,
+          STUFF((
+              SELECT ',' + ldb2.RFID
+              FROM Last_Data_Binding ldb2
+              WHERE ldb2.LastNo = ldb.LastNo AND ldb2.LastSize = ldb.LastSize
+              FOR XML PATH(''), TYPE
+          ).value('.', 'NVARCHAR(MAX)'), 1, 1, '') AS RFID_List,
+          MIN(ldb.LastMatNo)   AS LastMatNo,
+          MIN(ldb.LastName)    AS LastName,
+          MIN(ldb.Material)    AS Material,
+          MIN(ldb.LastType)    AS LastType,
+          MIN(ldb.DateIn)      AS DateIn,
+          MIN(ldb.UserID)      AS UserID,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyLeft,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyRight,
+          CAST(
+              (CASE 
+                  WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) 
+                     <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                  THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                  ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+              END)
+              +
+              (ABS(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) - SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)) * 0.5)
+          AS DECIMAL(10,1)) AS TotalPairs,
+          COUNT(*) AS TotalQty,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyLeftInStock,
+          CAST(SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END) AS DECIMAL(10,1)) AS QtyRightInStock,
+          CAST(
+              (CASE 
+                  WHEN SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) 
+                     <= SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+                  THEN SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+                  ELSE SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+              END)
+              +
+              (ABS(
+                  SUM(CASE WHEN ldb.LastSide = 'Left' AND ldb.isOut = 0 THEN 1 ELSE 0 END) - 
+                  SUM(CASE WHEN ldb.LastSide = 'Right' AND ldb.isOut = 0 THEN 1 ELSE 0 END)
+              ) * 0.5)
+          AS DECIMAL(10,1)) AS QtyInStock
+      FROM
+          Last_Data_Binding ldb
+      GROUP BY
+          ldb.LastNo,
+          ldb.LastSize
+      ORDER BY
+          ldb.LastNo,
+          ldb.LastSize;
+    `;
+
+    // Câu lệnh 2: Lấy danh sách chi tiết các đơn mượn
+    const sqlQueryDonMuon = `
+      SELECT 
+          dldb.ID_bill, 
+          dldb.DepID,
+          bdep.DepName,
+          ldb.Userid, 
+          bu.USERNAME AS BorrowerName,
+          ldb.OfficerId, 
+          officer.USERNAME AS OfficerName,
+          ldb.LastMatNo, 
+          dldb.LastName, 
+          dldb.LastSize, 
+          dldb.LastSum,
+          ldb.DateBorrow, 
+          ldb.DateReceive, 
+          ldb.isConfirm,
+          ldb.StateLastBill,
+          CAST(ISNULL(ldb.ToTalPhomNotBinding, 0) AS DECIMAL(10,1)) AS ToTalPhomNotBinding,
+          CAST(ISNULL(ScannedData.TotalPairsScanned, 0) AS DECIMAL(10,1)) AS TotalPairsScanned,
+          CAST(ISNULL(ScannedData.QtyLeftScanned, 0) AS DECIMAL(10,1)) AS QtyLeftScanned,
+          CAST(ISNULL(ScannedData.QtyRightScanned, 0) AS DECIMAL(10,1)) AS QtyRightScanned
+      FROM Last_Data_Bill ldb
+      JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
+      LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
+      LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
+      LEFT JOIN BDepartment bdep ON ldb.DepID = bdep.ID
+      LEFT JOIN (
+          SELECT
+              lds.ID_bill,
+              ldb.LastMatNo,
+              ldb.LastSize,
+              SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) AS QtyLeftScanned,
+              SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END) AS QtyRightScanned,
+              CAST(
+                  (CASE 
+                      WHEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                         <= SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                      THEN SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END)
+                      ELSE SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)
+                  END)
+                  +
+                  (ABS(SUM(CASE WHEN ldb.LastSide = 'Left' THEN 1 ELSE 0 END) - 
+                       SUM(CASE WHEN ldb.LastSide = 'Right' THEN 1 ELSE 0 END)) * 0.5)
+                  AS DECIMAL(10,1)
+              ) AS TotalPairsScanned
+          FROM Last_Detail_Scan_Out lds
+          JOIN Last_Data_Binding ldb ON lds.RFID = ldb.RFID
+          WHERE lds.StateScan = 0 AND ldb.isOut = 1
+          GROUP BY lds.ID_bill, ldb.LastMatNo, ldb.LastSize
+      ) AS ScannedData 
+          ON dldb.ID_bill = ScannedData.ID_bill 
+          AND dldb.LastMatNo = ScannedData.LastMatNo 
+          AND dldb.LastSize = ScannedData.LastSize;
+    `;
+    
+    // ----- THỰC THI SONG SONG 2 CÂU LỆNH -----
+    const [phomTrongKhoResult, donMuonResult] = await Promise.all([
+      db.Execute(companyname, sqlQueryPhomTrongKho),
+      db.Execute(companyname, sqlQueryDonMuon)
+    ]);
+
+    const responseData = {
+      danhSachPhomTrongKho: phomTrongKhoResult.jsonArray || [], 
+      danhSachDonMuon: donMuonResult.jsonArray || []
+    };
+
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: responseData,
+      message: "Lấy dữ liệu tổng quan thành công.",
+    };
+
+  } catch (error) {
+    console.error("Lỗi khi lấy dữ liệu tổng quan phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: null, // Trả về null hoặc một object rỗng trong trường hợp lỗi
+      message: "Lỗi máy chủ khi lấy dữ liệu tổng quan phom.",
+    };
+  }
+};
