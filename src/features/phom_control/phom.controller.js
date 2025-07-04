@@ -384,3 +384,15 @@ exports.submitTransfer = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
+exports.getBorrowPhomState = async (req, res) => {
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.getBorrowPhomState(companyName);
+  if (!result) {
+    res.status(500).json("No resutlt found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
