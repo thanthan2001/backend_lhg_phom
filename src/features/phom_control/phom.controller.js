@@ -396,3 +396,28 @@ exports.getBorrowPhomState = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
+exports.updatePhom = async (req, res) => {
+  const { companyName, details } = req.body;
+
+  if (
+    !companyName ||
+    !details ||
+    !Array.isArray(details) ||
+    details.length === 0
+  ) {
+    return res.status(400).json({
+      statusCode: 400,
+      message:
+        "Dữ liệu không hợp lệ. Cần 'companyName' và mảng 'details' không được rỗng.",
+    });
+  }
+
+  const result = await phomModel.updatePhom(companyName, details);
+
+  if (result.statusCode === 500) {
+    res.status(500).json(result);
+  } else {
+    res.status(200).json(result);
+  }
+};
