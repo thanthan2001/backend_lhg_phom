@@ -880,10 +880,12 @@ exports.LayPhieuMuonPhom = async (companyname, payload) => {
       };
     } else {
       const ID_Bill = results.jsonArray[0].ID_bill;
+
       const getDetailsBill = await db.Execute(
         companyname,
         `select * from Detail_Last_Data_Bill where ID_bill = '${ID_Bill}'`
       );
+
       console.log("ID_Bill", getDetailsBill);
       return {
         status: "Success",
@@ -1075,7 +1077,7 @@ exports.checkRFIDinBrBill = async (companyname, payload) => {
   try {
     const results = await db.Execute(
       companyname,
-      `SELECT RFID FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}'`
+      `SELECT RFID FROM Last_Detail_Scan_Out WHERE RFID = '${payload.RFID}' and ID_bill = '${payload.ID_BILL}'`
     );
     if (results.rowCount === 0) {
       return {
@@ -1105,6 +1107,7 @@ exports.checkRFIDinBrBill = async (companyname, payload) => {
 
 exports.submitReturnPhom = async (companyname, payload) => {
   console.log("DEBUG payload:", JSON.stringify(payload)); // 👈 thêm dòng này
+  const id_Bill = payload.data[0].ID_bill;
   try {
     // Kiểm tra phiếu trả có tồn tại
     const checkBillBr = await db.Execute(
@@ -1120,6 +1123,12 @@ exports.submitReturnPhom = async (companyname, payload) => {
     }
 
     const resultsInsert = [];
+    await db.Execute(
+      companyname,
+      `INSERT Return_Bill (ID_Return,ID_BILL, Userid, totalQuantityBorrow, totalQuantityReturn, isConfirm, ReturnRequestDate)
+      VALUES ('${payload.data[0].ID_bill}','${payload.data[0].ID_bill}', '${payload.data[0].Userid}', ${payload.data[0].TotalScanOut}, ${resultsInsert.length}, 0, GETDATE())
+      `
+    );
     for (const item of payload.data[0].payloadDetails) {
       const checkExitsRFIDinBill = await db.Execute(
         companyname,
@@ -1133,7 +1142,7 @@ exports.submitReturnPhom = async (companyname, payload) => {
       await db.Execute(
         companyname,
         `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate)
-          VALUES ('${item.ID_BILL}', '${item.RFID}', GETDATE())`
+          VALUES ('${id_Bill}', '${item.RFID}', GETDATE())`
       );
 
       await db.Execute(
@@ -1142,13 +1151,6 @@ exports.submitReturnPhom = async (companyname, payload) => {
       );
       resultsInsert.push(item.RFID);
     }
-
-    await db.Execute(
-      companyname,
-      `INSERT Return_Bill (ID_Return,ID_BILL, Userid, totalQuantityBorrow, totalQuantityReturn, isConfirm, ReturnRequestDate)
-      VALUES ('${payload.data[0].ID_bill}','${payload.data[0].ID_bill}', '${payload.data[0].Userid}', ${payload.data[0].TotalScanOut}, ${resultsInsert.length}, 0, GETDATE())
-      `
-    );
 
     const DataLastInOut = await db.Execute(
       companyname,
