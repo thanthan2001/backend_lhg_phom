@@ -192,6 +192,41 @@ exports.getPhomNotBinding = async (companyname) => {
     };
   }
 };
+
+exports.updaterfidphom = async (companyname, payload) => {
+  try {
+    const RFID_Update = await db.Execute(
+      companyname,
+      `UPDATE Last_Data_Binding SET RFID = '${payload.RFID}' WHERE RFID_Shortcut = '${payload.RFID_Shortcut}'`
+    );
+    const results = await db.Execute(
+      `select * from Last_Data_Binding where  RFID = '${payload.RFID}'`
+    );
+
+    if (results.rowCount === 0) {
+      return {
+        status: "Error",
+        statusCode: 400,
+        data: [],
+        message: "Không tìm thấy phom nào với RFID đã cập nhật.",
+      };
+    }
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: results.jsonArray,
+      message: "Cập nhật RFID phom thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi cập nhật RFID phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi cập nhật RFID phom.",
+    };
+  }
+};
 // model
 exports.saveBill = async (companyName, body) => {
   const { scannedRfidDetailsList } = body;
@@ -451,6 +486,7 @@ exports.getSizeByLastMatNo = async (companyname, LastMatNo) => {
     };
   }
 };
+
 exports.getDepartment = async (companyname) => {
   try {
     const results = await db.Execute(
@@ -523,7 +559,6 @@ FROM (
 JOIN LastNoM lnm 
     ON lnm.LastMatNo = sub.LastMatNo
 WHERE lnm.LastName = '${TenPhom}';
-
       `
     );
     return {
@@ -628,11 +663,11 @@ exports.bindingPhom = async (companyname, payload) => {
         companyname,
         `
         INSERT INTO Last_Data_Binding 
-        (RFID, LastMatNo, LastName, LastNo, LastType, Material, LastSize, LastSide, UserID, ShelfName, DateIn)
+        (RFID, LastMatNo, LastName, LastNo, LastType, Material, LastSize, LastSide, UserID, ShelfName, DateIn,RFID_Shortcut)
         VALUES (
           '${item.RFID}', '${item.LastMatNo}', '${item.LastName}', '${item.LastNo}',
           '${item.LastType}', '${item.Material}', '${item.LastSize}', '${item.LastSide}',
-          '${item.UserID}', '${item.ShelfName}', '${item.DateIn}'
+          '${item.UserID}', '${item.ShelfName}', '${item.DateIn}', '${item.RFIDShortcut}'
         )
         `
       );
@@ -666,6 +701,37 @@ exports.bindingPhom = async (companyname, payload) => {
       statusCode: 500,
       data: [],
       message: "Lỗi khi gán phom.",
+    };
+  }
+};
+
+exports.checkExitsRFID = async (companyName, ListRFID) => {
+  try {
+    const failedList = [];
+    for (const rfid of ListRFID) {
+      const results = await db.Execute(
+        companyName,
+        `SELECT * FROM Last_Data_Binding WHERE RFID = '${rfid}'`
+      );
+      if (results && results.jsonArray.length > 0) {
+        failedList.push({ data: results.jsonArray });
+      }
+    }
+    if (failedList && failedList.length > 0) {
+      return {
+        status: "Exists",
+        statusCode: 400,
+        data: failedList,
+        message: `Đã có phom tồn tại trong hệ thống`,
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi khi kiểm tra RFID:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi kiểm tra RFID.",
     };
   }
 };
@@ -1405,7 +1471,6 @@ exports.getBorrowBillByUser = async (companyname, payload) => {
   }
 };
 
-
 exports.getAllReturnBill = async (companyname, payload) => {
   try {
     const results = await db.Execute(
@@ -1934,7 +1999,6 @@ LEFT JOIN (
     };
   }
 };
-
 
 exports.updaterfidphom = async (companyname, payload) => {
   try {

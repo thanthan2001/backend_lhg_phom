@@ -117,7 +117,17 @@ exports.searchPhomBinding = async (req, res) => {
     res.status(200).json(result);
   }
 };
-
+exports.updaterfidphom = async (req, res) => {
+  const companyName = req.body.companyName;
+  const payload = req.body;
+  const result = await phomModel.updaterfidphom(companyName, payload);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
 exports.bindingPhom = async (req, res) => {
   const companyName = req.body.companyName;
   // const RFID = req.body.RFID;
@@ -154,6 +164,19 @@ exports.bindingPhom = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
+exports.checkExitsRFID = async (req, res) => {
+  const companyName = req.body.companyName;
+  const ListRFID = req.body.ListRFID;
+  const result = await phomModel.checkExitsRFID(companyName, ListRFID);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
+
 exports.updatePhom = async (req, res) => {
   const { companyName, details } = req.body;
 
