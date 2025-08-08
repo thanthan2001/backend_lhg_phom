@@ -32,5 +32,6 @@ router.post("/getSizeNotBinding", phomRoute.getSizeNotBinding);
 router.post("/updatephom", phomRoute.updatePhom);
 router.post("/submitTransfer", phomRoute.submitTransfer);
 router.post("/getBorrowPhomState", phomRoute.getBorrowPhomState);
+router.post("/updaterfidphom", phomRoute.updatePhom);
 
 module.exports = router;
