@@ -33,5 +33,7 @@ router.post("/submitTransfer", phomRoute.submitTransfer);
 router.post("/getBorrowPhomState", phomRoute.getBorrowPhomState);
 router.post("/updaterfidphom", phomRoute.updatePhom);
 router.post("/getDetailsBillScanOut", phomRoute.getDetailsBillScanOut);
+router.post("/statisticalParameters", phomRoute.statisticalParameters);
+router.post("/controlPhom", phomRoute.controlPhom);
 
 module.exports = router;

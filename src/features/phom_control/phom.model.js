@@ -48,6 +48,227 @@ GROUP BY
   }
 };
 
+exports.controlPhom = async (payload) => {
+  console.log(payload);
+  try {
+    const results = await db.Execute(
+      payload.companyName,
+      `
+      DECLARE @cols NVARCHAR(MAX);
+DECLARE @selectCols NVARCHAR(MAX);
+DECLARE @remainCols NVARCHAR(MAX);
+DECLARE @query NVARCHAR(MAX);
+
+-- Danh sách cột LastSize (thứ tự số)
+SELECT @cols = STUFF((
+    SELECT ',' + QUOTENAME(LastSize)
+    FROM (SELECT DISTINCT LastSize FROM Last_Data_Binding) t
+    ORDER BY CAST(LastSize AS FLOAT)
+    FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'),1,1,'');
+
+-- Nếu không có cột thì báo lỗi và dừng
+IF @cols IS NULL OR LTRIM(RTRIM(@cols)) = ''
+BEGIN
+    RAISERROR(N'Không tìm thấy dữ liệu LastSize',16,1);
+    RETURN;
+END;
+
+-- Cột hiển thị: chia 2, giữ thập phân (.1), NULL -> 0
+SELECT @selectCols = STUFF((
+    SELECT ',ISNULL(CAST([' + LastSize + '] / 2.0 AS DECIMAL(10,1)),0) AS [' + LastSize + ']'
+    FROM (SELECT DISTINCT LastSize FROM Last_Data_Binding) t
+    ORDER BY CAST(LastSize AS FLOAT)
+    FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'),1,1,'');
+
+-- Cột Remaining = Tổng(đã chia 2) - SUM(chi tiết đã chia 2)
+SELECT @remainCols = STUFF((
+    SELECT ',CAST(ISNULL(MAX(CASE WHEN DepID = N''Total'' THEN [' + LastSize + '] END)
+                      - SUM(CASE WHEN DepID NOT IN (N''Total'', N''Remaining'') THEN [' + LastSize + '] END),0) AS DECIMAL(10,1)) AS [' + LastSize + ']'
+    FROM (SELECT DISTINCT LastSize FROM Last_Data_Binding) t
+    ORDER BY CAST(LastSize AS FLOAT)
+    FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'),1,1,'');
+
+-- Ghép query động
+SET @query = N'
+;WITH PivotResult AS (
+    -- Tổng theo LastNo
+    SELECT LastNo, N''Total'' AS DepID, ' + @cols + '
+    FROM (SELECT LastNo, LastSize FROM Last_Data_Binding) src
+    PIVOT (COUNT(LastSize) FOR LastSize IN (' + @cols + ')) pvt
+
+    UNION ALL
+
+    -- Chi tiết theo LastNo + DepName
+    SELECT LastNo, DepID, ' + @cols + '
+    FROM (
+        SELECT ldb.LastNo,
+               ISNULL(bdep.DepName, CONVERT(varchar(50), ldso.DepID)) AS DepID,
+               ldb.LastSize
+        FROM Last_Data_Binding ldb
+        JOIN Last_Detail_Scan_Out ldso ON ldb.RFID = ldso.RFID
+        LEFT JOIN BDepartment bdep ON bdep.ID = ldso.DepID
+        WHERE ldb.LastNo = ''${payload.LastNo}''
+    ) src
+    PIVOT (COUNT(LastSize) FOR LastSize IN (' + @cols + ')) pvt
+),
+Formatted AS (
+    SELECT LastNo, DepID, ' + @selectCols + '
+    FROM PivotResult
+),
+Remaining AS (
+    SELECT LastNo, N''Remaining'' AS DepID, ' + @remainCols + '
+    FROM Formatted
+    GROUP BY LastNo
+)
+SELECT *
+FROM (
+    SELECT * FROM Formatted
+    UNION ALL
+    SELECT * FROM Remaining
+) x
+ORDER BY LastNo,
+         CASE WHEN DepID = N''Total'' THEN 0 
+              WHEN DepID = N''Remaining'' THEN 2 
+              ELSE 1 END,
+         DepID;';
+
+-- Thực thi
+EXEC sp_executesql @query;
+`
+    );
+    if (!results || results.jsonArray.length === 0) {
+      console.error("Không có dữ liệu hoặc jsonArray trả về từ cơ sở dữ liệu.");
+      return {
+        status: "Error",
+        statusCode: 404,
+        data: [],
+        message: "Không tìm thấy thông tin thống kê.",
+      };
+    }
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: results.jsonArray,
+      message: "Lấy thông tin thống kê thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi lấy tất cả phom:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy tất cả phom.",
+    };
+  }
+};
+
+exports.statisticalParameters = async (payload) => {
+  console.log(payload);
+  try {
+    const statisticData = await db.Execute(
+      payload.companyName,
+      `
+      SELECT sub.*,CAST((sub.DangSuDung/sub.TongSoLuong)*100 as decimal(10,3)) as TyLeSD,CAST((sub.PhomMat/sub.TongSoLuong)*100 as decimal(10,3)) as TyLeThatLac  FROM 
+      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1)) AS TongSoLuong,
+      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1))FROM Last_Data_Binding where isOut='1') AS DangSuDung,
+      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1))FROM Last_Data_Binding where isOut='0') AS TonKho ,
+      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1))FROM Last_Data_Binding where isLost='1') AS PhomMat 
+      FROM Last_Data_Binding ldb) as sub 
+      `
+    );
+
+    if (!statisticData || !statisticData.jsonArray) {
+      console.warn("Không có dữ liệu hoặc jsonArray trả về từ cơ sở dữ liệu.");
+      return {
+        status: "Error",
+        statusCode: 404,
+        data: [],
+        message: "Không tìm thấy thông tin thống kê.",
+      };
+    }
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: statisticData.jsonArray,
+      message: "Lấy thông tin thống kê thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi lấy thông tin thống kê:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy thông tin thống kê.",
+    };
+  }
+};
+exports.getInforPhomBinding = async (companyname) => {
+  console.log(companyname);
+  try {
+    const results = await db.Execute(
+      companyname,
+      `
+    SELECT *,
+       SUM(SL) OVER() AS TongSL,sum(SL_0) OVER() as Tong_TonKho
+FROM (
+    SELECT 
+        ldb.LastMatNo,
+        ldb.LastNo,
+        ldb.LastSize,
+		ldb.Material,
+        CAST(COUNT(ldb.LastSize) / 2.0 AS DECIMAL(10,1)) AS SL,
+		CAST(COUNT(CASE WHEN ldb.isOut = 0 THEN ldb.LastSize END) / 2.0 AS DECIMAL(10,1)) AS SL_0
+    FROM Last_Data_Binding ldb
+    GROUP BY ldb.LastMatNo, ldb.LastNo, ldb.LastSize,ldb.Material
+) AS sub
+ORDER BY sub.LastNo DESC;
+
+
+
+
+      `
+    );
+    const rows = results.jsonArray;
+    console.log("rows", rows);
+    // Gom nhóm theo LastNo
+    const grouped = Object.values(
+      rows.reduce((acc, row) => {
+        if (!acc[row.LastNo]) {
+          acc[row.LastNo] = {
+            code: row.LastMatNo,
+            name: row.LastNo,
+            material: row.Material,
+            TongPhom: row.TongSL,
+            TongTonKho: row.Tong_TonKho,
+            details: [],
+          };
+        }
+        acc[row.LastNo].details.push({
+          size: row.LastSize,
+          quantity: row.SL,
+          stock: row.SL_0,
+        });
+        return acc;
+      }, {})
+    );
+
+    return {
+      status: "Thành công",
+      statusCode: 200,
+      data: grouped,
+      message: "Lấy thông tin phom thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi lấy thông tin phom binding:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy thông tin phom binding.",
+    };
+  }
+};
+
 exports.getBorrowBill = async (companyname) => {
   try {
     const results = await db.Execute(
@@ -75,7 +296,7 @@ exports.getBorrowBill = async (companyname) => {
     -- Số lượng đôi phom đã scan cho mượn (TotalPairsScanned)
     CAST(ISNULL(ScannedData.TotalPairsScanned, 0) AS DECIMAL(10,1)) AS TotalPairsScanned
 
-FROM Last_Data_Bill ldb
+FROM Last_Data_Bill ldb 
 JOIN Detail_Last_Data_Bill dldb ON ldb.ID_bill = dldb.ID_bill
 LEFT JOIN Busers bu ON ldb.Userid = bu.USERID
 LEFT JOIN Busers officer ON ldb.OfficerId = officer.USERID
@@ -93,7 +314,7 @@ LEFT JOIN (
 
     FROM Last_Detail_Scan_Out lds
     JOIN Last_Data_Binding ldb ON lds.RFID = ldb.RFID
-    WHERE lds.StateScan = 0 AND ldb.isOut = 1
+    WHERE lds.StateScan = 0
     GROUP BY lds.ID_bill, ldb.LastMatNo, ldb.LastSize
 ) AS ScannedData 
     ON dldb.ID_bill = ScannedData.ID_bill 
@@ -282,6 +503,9 @@ exports.updaterfidphom = async (companyname, payload) => {
 };
 // model
 exports.saveBill = async (companyName, body) => {
+  const LO = await db.Execute(companyName, `EXEC sp_GenerateLastInOutNo`);
+  const LastInOutNo = LO.jsonArray[0].NewLastInOutNo;
+
   const { scannedRfidDetailsList } = body;
 
   if (!companyName || !Array.isArray(scannedRfidDetailsList)) {
@@ -311,12 +535,16 @@ exports.saveBill = async (companyName, body) => {
 
       await db.Execute(
         companyName,
-        `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan)
-         VALUES ('${payload.ID_BILL}', '${payload.DepID}', '${payload.RFID}', '${payload.ScanDate}', '${payload.StateScan}')`
+        `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan, LastInOutNo)
+         VALUES ('${payload.ID_BILL}', '${payload.DepID}', '${payload.RFID}', GETDATE(), '${payload.StateScan}', '${LastInOutNo}')`
       );
       await db.Execute(
         companyName,
         `UPDATE Last_Data_Bill SET StateLastBill = 1 WHERE ID_bill = '${payload.ID_BILL}'`
+      );
+      await db.Execute(
+        companyName,
+        `UPDATE Last_Data_Bill SET LastInOutNo = '${LastInOutNo}' WHERE ID_bill = '${payload.ID_BILL}'`
       );
       await db.Execute(
         companyName,
@@ -370,9 +598,6 @@ exports.saveBill = async (companyName, body) => {
   const LastSumQty = ListDataInOutNo.reduce((acc, item) => {
     return acc + parseFloat(item.QtySide); // sử dụng parseFloat để cộng 0.5
   }, 0);
-
-  const LO = await db.Execute(companyName, `EXEC sp_GenerateLastInOutNo`);
-  const LastInOutNo = LO.jsonArray[0].NewLastInOutNo;
 
   await db.Execute(
     companyName,
@@ -722,7 +947,7 @@ exports.bindingPhom = async (companyname, payload) => {
         VALUES (
           '${item.RFID}', '${item.LastMatNo}', '${item.LastName}', '${item.LastNo}',
           '${item.LastType}', '${item.Material}', '${item.LastSize}', '${item.LastSide}',
-          '${item.UserID}', '${item.ShelfName}', '${item.DateIn}', '${item.RFIDShortcut}'
+          '${item.UserID}', '${item.ShelfName}', GETDATE(), '${item.RFIDShortcut}'
         )
         `
       );
@@ -1203,25 +1428,50 @@ exports.checkRFIDinBrBill = async (companyname, payload) => {
   try {
     const results = await db.Execute(
       companyname,
-      `SELECT ldso.RFID,ldb.LastNo,ldb.LastSize FROM Last_Detail_Scan_Out ldso 
-      join Last_Data_Binding ldb 
-      on  ldso.RFID=ldb.RFID 
-      WHERE ldso.RFID = '${payload.RFID}' and ldso.ID_bill='${payload.ID_BILL}'`
+      `
+SELECT 
+    ldb.LastNo,
+    ldb.LastSize,
+    ldb.RFID_Shortcut,
+    CASE 
+        WHEN COUNT(ldso.RFID) = 0 THEN -1
+        ELSE (SUM(ISNULL(ldso.YN,0)) + SUM(ISNULL(ldr.YN,0)))
+    END AS isReturn
+FROM Last_Data_Binding ldb
+LEFT JOIN Last_Detail_Scan_Out ldso 
+    ON ldso.RFID = ldb.RFID 
+LEFT JOIN Details_Last_Scan_Return ldr 
+    ON ldr.RFID = ldb.RFID
+WHERE ldb.RFID = '${payload.RFID}'
+GROUP BY 
+    ldb.LastNo,
+    ldb.LastSize,
+    ldb.RFID_Shortcut;
+`
     );
     console.log("results", results);
-    if (results.rowCount === 0) {
+    if (results.jsonArray[0].isReturn === -1) {
       return {
-        status: "NULL",
+        status: -1,
         statusCode: 500,
-        data: [],
-        message: "Không có phom nào",
+        data: results.jsonArray,
+        message: "Phom chưa được mượn",
       };
-    } else {
+    }
+    if (results.jsonArray[0].isReturn === 1) {
       return {
-        status: "Success",
+        status: 1,
         statusCode: 200,
-        data: results,
-        message: "Lấy phom thành công.",
+        data: results.jsonArray,
+        message: "Hợp lệ để trả",
+      };
+    }
+    if (results.jsonArray[0].isReturn === 0) {
+      return {
+        status: 0,
+        statusCode: 200,
+        data: results.jsonArray,
+        message: "Không hợp lệ, phom đã được trả",
       };
     }
   } catch (error) {
@@ -1236,105 +1486,152 @@ exports.checkRFIDinBrBill = async (companyname, payload) => {
 };
 
 exports.submitReturnPhom = async (companyname, payload) => {
-  console.log("DEBUG payload:", JSON.stringify(payload)); // 👈 thêm dòng này
+  console.log("DEBUG payload:", JSON.stringify(payload));
+
+  // 1. Sinh số Return mới
+  const LastInOutNo = await db.Execute(
+    companyname,
+    `EXEC sp_GenerateLastInOutNo`
+  );
+  const NewLastInOutNo = LastInOutNo.jsonArray[0].NewLastInOutNo;
+
   try {
-    // Kiểm tra phiếu trả có tồn tại
-    const checkBillBr = await db.Execute(
-      companyname,
-      `SELECT * FROM Return_Bill WHERE ID_BILL = '${payload.data[0].ID_bill}'`
-    );
-    if (checkBillBr.rowCount !== 0) {
-      return {
-        status: "Error",
-        statusCode: 404,
-        message: "Đơn mượn đã được xử lí trước đó.",
-      };
-    }
-
     const resultsInsert = [];
-    for (const item of payload.data[0].payloadDetails) {
-      const checkExitsRFIDinBill = await db.Execute(
+
+    // 2. Lặp qua từng RFID trong danh sách
+    for (const RFID of payload.RFID_LIST) {
+      // Query xác định trạng thái RFID
+      const result = await db.Execute(
         companyname,
-        `SELECT RFID FROM Details_Last_Scan_Return WHERE RFID = '${item.RFID}'`
+        `
+        ;WITH All_Scans AS (
+            SELECT RFID, SUM(YN) AS TotalYN, MAX(DepID) AS DepIDOut
+            FROM (
+                SELECT RFID, YN, DepID FROM Last_Detail_Scan_Out
+                UNION ALL
+                SELECT RFID, YN, DepID FROM Details_Last_Scan_Return
+            ) t
+            WHERE RFID = '${RFID}'
+            GROUP BY RFID
+        )
+        SELECT 
+            '${RFID}' AS RFID,
+            CASE 
+                WHEN a.TotalYN IS NULL THEN 'Extra'
+                WHEN a.TotalYN = 0 THEN 'Returned'
+                WHEN '${payload.DepID}' <> a.DepIDOut THEN 'Mismatch'
+                ELSE 'Returned'
+            END AS Status
+        FROM All_Scans a;
+        `
       );
 
-      if (checkExitsRFIDinBill.rowCount != 0) {
-        console.log(`RFID ${item.RFID} đã được scan trả trước đó, bỏ qua.`);
-        continue;
+      let status = "Extra"; // mặc định nếu không tìm thấy
+      if (result.jsonArray && result.jsonArray.length > 0) {
+        status = result.jsonArray[0].Status;
       }
+
+      // Insert vào Details_Last_Scan_Return với StatusRFIDReturn
       await db.Execute(
         companyname,
-        `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate)
-          VALUES ('${payload.data[0].ID_bill}', '${item.RFID}', GETDATE())`
+        `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate, StatusRFIDReturn, DepID)
+         VALUES ('${NewLastInOutNo}', '${RFID}', GETDATE(), '${status}', '${payload.DepID}')`
       );
 
-      await db.Execute(
-        companyname,
-        `UPDATE Last_Data_Binding SET isOut = 0 WHERE RFID = '${item.RFID}'`
-      );
-      resultsInsert.push(item.RFID);
+      // Nếu RFID hợp lệ => cập nhật binding
+      if (status === "Returned") {
+        await db.Execute(
+          companyname,
+          `UPDATE Last_Data_Binding SET isOut = 0 WHERE RFID = '${RFID}'`
+        );
+      }
+
+      resultsInsert.push({ RFID, Status: status });
     }
 
-    await db.Execute(
+    // 3. Check Missing (các RFID chưa trả nhưng không có trong payload)
+    const missingCheck = await db.Execute(
       companyname,
-      `INSERT Return_Bill (ID_Return,ID_BILL, Userid, totalQuantityBorrow, totalQuantityReturn, isConfirm, ReturnRequestDate)
-      VALUES ('${payload.data[0].ID_bill}','${payload.data[0].ID_bill}', '${payload.data[0].Userid}', ${payload.data[0].TotalScanOut}, ${resultsInsert.length}, 0, GETDATE())
+      `
+      ;WITH All_Scans AS (
+          SELECT RFID, SUM(YN) AS TotalYN
+          FROM (
+              SELECT RFID, YN, DepID FROM Last_Detail_Scan_Out
+              UNION ALL
+              SELECT RFID, YN, DepID FROM Details_Last_Scan_Return
+          ) t
+          GROUP BY RFID
+      )
+      SELECT l.RFID, 'Missing' AS Status
+      FROM Last_Detail_Scan_Out l
+      INNER JOIN All_Scans a ON l.RFID = a.RFID
+      WHERE a.TotalYN > 0
+        AND l.DepID = '${payload.DepID}'
+        AND l.RFID NOT IN (${payload.RFID_LIST.map((x) => `'${x}'`).join(",")})
       `
     );
 
+    if (missingCheck.jsonArray && missingCheck.jsonArray.length > 0) {
+      for (const miss of missingCheck.jsonArray) {
+        await db.Execute(
+          companyname,
+          `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate, StatusRFIDReturn, DepID)
+           VALUES ('${NewLastInOutNo}', '${miss.RFID}', GETDATE(), 'Missing', '${payload.DepID}')`
+        );
+        resultsInsert.push({ RFID: miss.RFID, Status: "Missing" });
+      }
+    }
+
+    // 4. Insert Return_Bill
+    // await db.Execute(
+    //   companyname,
+    //   `INSERT INTO Return_Bill (ID_Return, ID_BILL, Userid, totalQuantityBorrow, totalQuantityReturn, isConfirm, ReturnRequestDate)
+    //    VALUES ('${NewLastInOutNo}', '${NewLastInOutNo}', '${payload.Userid}', ${payload.RFID_LIST.length}, ${
+    //     resultsInsert.filter((x) => x.Status === "Returned").length
+    //   }, 0, GETDATE())`
+    // );
+
+    // 5. Gom dữ liệu chi tiết Last
     const DataLastInOut = await db.Execute(
       companyname,
       `SELECT 
-        ldb.LastMatNo,
-        ldb.LastSize,
-        count(*) as lastsum,
-        COUNT(*) * 0.5 AS LastQty
-        FROM 
-        Details_Last_Scan_Return dlsr
-      JOIN 
-        Last_Data_Binding ldb 
-      ON 
-        dlsr.RFID = ldb.RFID
-      where dlsr.ID_Return='${payload.data[0].ID_bill}'
-      GROUP BY 
-        ldb.LastMatNo, ldb.LastSize;`
+          ldb.LastMatNo,
+          ldb.LastSize,
+          COUNT(*) as lastsum,
+          COUNT(*) * 0.5 AS LastQty
+        FROM Details_Last_Scan_Return dlsr
+        JOIN Last_Data_Binding ldb ON dlsr.RFID = ldb.RFID
+        WHERE dlsr.ID_Return='${NewLastInOutNo}'
+        GROUP BY ldb.LastMatNo, ldb.LastSize;`
     );
 
-    const LastInOutNo = await db.Execute(
-      companyname,
-      `EXEC sp_GenerateLastInOutNo`
-    );
-
-    const NewLastInOutNo = LastInOutNo.jsonArray[0].NewLastInOutNo;
     const newDetaLastInOut = DataLastInOut.jsonArray;
-    console.log("LastInOutNo:", newDetaLastInOut, "data", NewLastInOutNo);
+
+    // 6. Insert LastInOut_M
     await db.Execute(
       companyname,
-      `
-      INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
-      VALUES ('${NewLastInOutNo}', ${parseFloat(
-        payload.data[0].TotalScanOut
-      )}, '${payload.data[0].Userid}', GETDATE(), 'Y', '${
-        newDetaLastInOut[0].LastMatNo
-      }')
-    `
+      `INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
+       VALUES ('${NewLastInOutNo}', ${parseFloat(payload.RFID_LIST.length)}, '${
+        payload.Userid
+      }', GETDATE(), 'Y', '${newDetaLastInOut[0].LastMatNo}')`
     );
+
+    // 7. Insert LastInOut_A
     await db.Execute(
       companyname,
-      `
-      INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
-      VALUES ('${NewLastInOutNo}', GETDATE(), 'Return', 'BorrowReturn', '${payload.data[0].DepID}', NULL, 'Y', '${payload.data[0].Userid}', GETDATE(), NULL, NULL)
-    `
+      `INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
+       VALUES ('${NewLastInOutNo}', GETDATE(), 'Return', 'BorrowReturn', '${payload.DepID}', NULL, 'Y', '${payload.Userid}', GETDATE(), NULL, NULL)`
     );
+
+    // 8. Insert LastInOut_D
     for (const item of newDetaLastInOut) {
       await db.Execute(
         companyname,
-        `
-        INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
-        VALUES ('${NewLastInOutNo}', '${item.LastSize}', ${item.LastQty}, 'Y', '${payload.data[0].Userid}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')
-      `
+        `INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
+         VALUES ('${NewLastInOutNo}', '${item.LastSize}', ${item.LastQty}, 'Y', '${payload.Userid}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')`
       );
     }
+
     return {
       status: "Success",
       statusCode: 200,
@@ -1351,6 +1648,135 @@ exports.submitReturnPhom = async (companyname, payload) => {
     };
   }
 };
+
+// exports.submitReturnPhom = async (companyname, payload) => {
+//   console.log("payload", payload);
+//   try {
+//     // Sinh số Return mới
+//     const LastInOutNo = await db.Execute(
+//       companyname,
+//       `EXEC sp_GenerateLastInOutNo`
+//     );
+//     const NewLastInOutNo = LastInOutNo.jsonArray[0].NewLastInOutNo;
+
+//     const resultsInsert = [];
+//     const checkData = await db.Execute(
+//       companyname,
+//       `SELECT * FROM Details_Last_Scan_Return WHERE ID_Return = '${NewLastInOutNo}'`
+//     );
+//     // Insert từng RFID vào return
+//     for (const rfid of payload.RFID_LIST) {
+//       await db.Execute(
+//         companyname,
+//         `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate,YN,DepID)
+//          VALUES ('${NewLastInOutNo}', '${rfid}', GETDATE(),-1,'${payload.DepID}')`
+//       );
+
+//       await db.Execute(
+//         companyname,
+//         `UPDATE Last_Data_Binding
+//          SET isOut = 0
+//          WHERE RFID = '${rfid}'`
+//       );
+
+//       resultsInsert.push(rfid);
+//     }
+
+//     // Lưu vào Return_Bill
+//     await db.Execute(
+//       companyname,
+//       `INSERT INTO Return_Bill
+//         (ID_Return, Userid, isConfirm, ReturnRequestDate)
+//        VALUES
+//         ('${NewLastInOutNo}',
+//          '${payload.Userid}',
+//           0,
+//          GETDATE())`
+//     );
+
+//     // Gom dữ liệu chi tiết Last
+//     const DataLastInOut = await db.Execute(
+//       companyname,
+//       `SELECT
+//           ldb.LastMatNo,
+//           ldb.LastSize,
+//           COUNT(*) as lastsum,
+//           COUNT(*) * 0.5 AS LastQty
+//         FROM Details_Last_Scan_Return dlsr
+//         JOIN Last_Data_Binding ldb ON dlsr.RFID = ldb.RFID
+//         WHERE dlsr.ID_Return='${NewLastInOutNo}'
+//         GROUP BY ldb.LastMatNo, ldb.LastSize`
+//     );
+
+//     const newDetaLastInOut = DataLastInOut.jsonArray;
+
+//     // Insert master
+//     await db.Execute(
+//       companyname,
+//       `INSERT INTO LastInOut_M
+//         (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
+//        VALUES
+//         ('${NewLastInOutNo}',
+//          ${parseFloat(payload.RFID_LIST.length / 2).toFixed(1)},
+//          '${payload.Userid}',
+//          GETDATE(),
+//          'Y',
+//          '${newDetaLastInOut[0].LastMatNo}')`
+//     );
+
+//     // Insert header
+//     await db.Execute(
+//       companyname,
+//       `INSERT INTO LastInOut_A
+//         (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
+//        VALUES
+//         ('${NewLastInOutNo}',
+//          GETDATE(),
+//          'Return',
+//          'BorrowReturn',
+//          '${payload.DepID}',
+//          NULL,
+//          'Y',
+//          '${payload.Userid}',
+//          GETDATE(),
+//          NULL,
+//          NULL)`
+//     );
+
+//     // Insert detail
+//     for (const item of newDetaLastInOut) {
+//       await db.Execute(
+//         companyname,
+//         `INSERT INTO LastInOut_D
+//           (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
+//          VALUES
+//           ('${NewLastInOutNo}',
+//            '${item.LastSize}',
+//            ${item.LastQty},
+//            'Y',
+//            '${payload.Userid}',
+//            GETDATE(),
+//            'ZZZZ',
+//            '${item.LastMatNo}')`
+//       );
+//     }
+
+//     return {
+//       status: "Success",
+//       statusCode: 200,
+//       message: "Xử lý đơn trả thành công",
+//       data: resultsInsert,
+//     };
+//   } catch (error) {
+//     console.error("Lỗi khi xử lý đơn trả:", error);
+//     return {
+//       status: "Error",
+//       statusCode: 500,
+//       message: "Lỗi khi xử lý đơn trả",
+//       data: [],
+//     };
+//   }
+// };
 
 exports.confirmBorrowBill = async (companyname, payload) => {
   try {

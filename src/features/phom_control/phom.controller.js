@@ -23,6 +23,27 @@ exports.getPhomNotBinding = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
+exports.controlPhom = async (req, res) => {
+  const payload = req.body;
+  const result = await phomModel.controlPhom(payload);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
+exports.statisticalParameters = async (req, res) => {
+  const payload = req.body;
+  const result = await phomModel.statisticalParameters(payload);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
 exports.getSizeNotBinding = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
@@ -38,6 +59,7 @@ exports.getSizeNotBinding = async (req, res) => {
 
 exports.getInforPhomBinding = async (req, res) => {
   const companyName = req.body.companyName;
+  console.log("Company Name:", companyName);
   const result = await phomModel.getInforPhomBinding(companyName);
   if (!result) {
     res.status(500).json("No phom found");
@@ -89,6 +111,7 @@ exports.getSizeByLastMatNo = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
 exports.getDepartment = async (req, res) => {
   const companyName = req.body.companyName;
   const result = await phomModel.getDepartment(companyName);
@@ -130,33 +153,9 @@ exports.updaterfidphom = async (req, res) => {
 };
 exports.bindingPhom = async (req, res) => {
   const companyName = req.body.companyName;
-  // const RFID = req.body.RFID;
-  // const LastMatNo = req.body.LastMatNo;
-  // const LastName = req.body.LastName;
-  // const LastNo = req.body.LastNo;
-  // const LastType = req.body.LastType;
-  // const Material = req.body.Material;
-  // const LastSize = req.body.LastSize;
-  // const LastSide = req.body.LastSide;
-  // const UserID = req.body.UserID;
-  // const ShelfName = req.body.ShelfName;
-  // const DateIn = req.body.DateIn;
+
   const payload = req.body;
-  const result = await phomModel.bindingPhom(
-    // RFID,
-    // LastMatNo,
-    // LastName,
-    // LastNo,
-    // LastType,
-    // Material,
-    // LastSize,
-    // LastSide,
-    // UserID,
-    // ShelfName,
-    // DateIn,
-    companyName,
-    payload
-  );
+  const result = await phomModel.bindingPhom(companyName, payload);
   if (!result) {
     res.status(500).json("No phom found");
   } else {

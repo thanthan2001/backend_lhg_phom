@@ -90,5 +90,49 @@ exports.getUserById = async (companyname, userID) => {
       message: "Lỗi trong quá trình lấy thông tin người dùng.",
     };
   }
-}
+};
 
+exports.getOfficerInfo = async (payload) => {
+  try {
+    const results = await db.Execute(
+      payload.companyName,
+      `SELECT 
+        PERSON_ID, 
+        PERSON_NAME, 
+        D.DEPARTMENT_NAME,
+        D.DEPARTMENT_SERIAL_KEY,
+        BD.ID as DEPARTMENT_ID
+    FROM HRIS.HRIS.DBO.DATA_PERSON P
+    LEFT JOIN HRIS.HRIS.DBO.DATA_DEPARTMENT D 
+        ON P.DEPARTMENT_SERIAL_KEY = D.DEPARTMENT_SERIAL_KEY
+    LEFT JOIN BDepartment BD 
+        ON BD.HR_department_serial_key = D.DEPARTMENT_SERIAL_KEY
+    WHERE PERSON_ID = '${payload.userID}';
+`
+    );
+
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 404,
+        data: [],
+        message: "Không tìm thấy thông tin officer.",
+      };
+    }
+
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: results.jsonArray[0],
+      message: "Lấy thông tin officer thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi lấy thông tin officer:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy thông tin officer.",
+    };
+  }
+};

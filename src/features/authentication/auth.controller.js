@@ -23,16 +23,26 @@ exports.getAllUsers = async (req, res) => {
   console.log(result);
   res.status(200).json(result);
 };
+exports.getOfficerInfo = async (req, res) => {
+  const payload = req.body;
 
-exports.getUserById= async (req, res) => {
-  const companyName = req.body.companyName;
-  const userID = req.body.userID;
-  console.log(companyName);
-  const result = await authModel.getUserById(companyName, userID);
-   if (!result) {
+  const result = await authModel.getOfficerInfo(payload);
+  if (!result) {
     res.status(500).json("No phom found");
   } else {
     console.log(result);
     res.status(200).json(result);
   }
-}
+};
+exports.getUserById = async (req, res) => {
+  const companyName = req.body.companyName;
+  const userID = req.body.userID;
+  console.log(companyName);
+  const result = await authModel.getUserById(companyName, userID);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
