@@ -44,6 +44,29 @@ exports.statisticalParameters = async (req, res) => {
     res.status(200).json(result);
   }
 };
+
+exports.statisticalParametersColumn = async (req, res) => {
+  console.log("123");
+  const payload = req.body;
+  const result = await phomModel.statisticalParametersColumn(payload);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
+exports.statisticalPhomBinding = async (req, res) => {
+  const payload = req.body;
+  const result = await phomModel.statisticalPhomBinding(payload);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
+
 exports.getSizeNotBinding = async (req, res) => {
   const companyName = req.body.companyName;
   const LastMatNo = req.body.LastMatNo;
@@ -115,6 +138,17 @@ exports.getSizeByLastMatNo = async (req, res) => {
 exports.getDepartment = async (req, res) => {
   const companyName = req.body.companyName;
   const result = await phomModel.getDepartment(companyName);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    console.log(result);
+    res.status(200).json(result);
+  }
+};
+
+exports.getAllLastNo = async (req, res) => {
+  const companyName = req.body.companyName;
+  const result = await phomModel.getAllLastNo(companyName);
   if (!result) {
     res.status(500).json("No phom found");
   } else {
@@ -267,13 +301,13 @@ exports.saveBill = async (req, res) => {
 
   try {
     const result = await phomModel.saveBill(companyName, payload);
+    console.log("Result from saveBill:", result);
     if (!result) {
       return res
         .status(500)
         .json({ status: "Error", message: "Không thể lưu dữ liệu." });
     }
-
-    res.status(200).json(result); // chỉ gọi res tại controller
+    res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ status: "Error", message: error.message });
   }

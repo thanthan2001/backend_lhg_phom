@@ -8,6 +8,7 @@ router.post("/getLastMatNo", phomRoute.getLastMatNo);
 router.post("/getPhomByLastMatNo", phomRoute.getPhomByLastMatNo);
 router.post("/getSizeByLastMatNo", phomRoute.getSizeByLastMatNo);
 router.post("/getDepartment", phomRoute.getDepartment);
+router.post("/getAllLastNo", phomRoute.getAllLastNo);
 router.post("/searchPhomBinding", phomRoute.searchPhomBinding);
 router.post("/getBorrowBill", phomRoute.getBorrowBill);
 router.post("/getAllReturnBill", phomRoute.getAllReturnBill);
@@ -33,7 +34,14 @@ router.post("/submitTransfer", phomRoute.submitTransfer);
 router.post("/getBorrowPhomState", phomRoute.getBorrowPhomState);
 router.post("/updaterfidphom", phomRoute.updatePhom);
 router.post("/getDetailsBillScanOut", phomRoute.getDetailsBillScanOut);
+
+//statistical
 router.post("/statisticalParameters", phomRoute.statisticalParameters);
+router.post(
+  "/statisticalParametersColumn",
+  phomRoute.statisticalParametersColumn
+);
+router.post("/statisticalMonthly", phomRoute.statisticalPhomBinding);
 router.post("/controlPhom", phomRoute.controlPhom);
 
 module.exports = router;
