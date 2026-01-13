@@ -44,4 +44,8 @@ router.post(
 router.post("/statisticalMonthly", phomRoute.statisticalPhomBinding);
 router.post("/controlPhom", phomRoute.controlPhom);
 
+//Missing
+router.post("/getMissingPhom", phomRoute.getMissingPhom);
+router.post("/swapIsLost", phomRoute.confirmMissingPhom);
+
 module.exports = router;

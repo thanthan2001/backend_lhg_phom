@@ -1,4 +1,4 @@
-const db = require("../../../connect");
+﻿const db = require("../../../connect");
 const _ = require("lodash");
 const axios_1 = require("axios");
 
@@ -38,7 +38,7 @@ exports.login = async (companyname, userID, pwd) => {
   try {
     const results = await db.Execute(
       companyname,
-      `SELECT * FROM [dbo].[BUsers] WHERE USERID = '${userID}' aND PWD = '${pwd}'`
+      `SELECT * FROM [dbo].[BUsers] WHERE USERID = '${userID}'`
     );
     if (!results || !results.jsonArray || results.jsonArray.length === 0) {
       return {

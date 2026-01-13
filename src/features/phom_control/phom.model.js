@@ -187,12 +187,21 @@ exports.statisticalParameters = async (payload) => {
     const statisticData = await db.Execute(
       payload.companyName,
       `
-      SELECT sub.*,CAST((sub.DangSuDung/sub.TongSoLuong)*100 as decimal(10,3)) as TyLeSD,CAST((sub.PhomMat/sub.TongSoLuong)*100 as decimal(10,3)) as TyLeThatLac  FROM 
-      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1)) AS TongSoLuong,
-      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1))FROM Last_Data_Binding where isOut='1') AS DangSuDung,
-      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1))FROM Last_Data_Binding where isOut='0') AS TonKho ,
-      (SELECT CAST(COUNT(*) / 2 AS DECIMAL(10,1))FROM Last_Data_Binding where isLost='1') AS PhomMat 
-      FROM Last_Data_Binding ldb) as sub 
+      SELECT 
+    sub.*,
+    CAST((sub.DangSuDung * 100.0 / sub.TongSoLuong) AS decimal(10,3)) as TyLeSD,
+    CAST((sub.PhomMat * 100.0 / sub.TongSoLuong) AS decimal(10,3)) as TyLeThatLac
+FROM (
+    SELECT 
+        CAST(COUNT(*) / 2.0 AS DECIMAL(10,1)) AS TongSoLuong,
+        (SELECT CAST(COUNT(*) / 2.0 AS DECIMAL(10,1)) 
+         FROM Last_Data_Binding WHERE isOut='1') AS DangSuDung,
+        (SELECT CAST(COUNT(*) / 2.0 AS DECIMAL(10,1)) 
+         FROM Last_Data_Binding WHERE isOut='0') AS TonKho,
+        (SELECT CAST(COUNT(*) / 2.0 AS DECIMAL(10,1)) 
+         FROM Last_Data_Binding WHERE isLost='1') AS PhomMat
+    FROM Last_Data_Binding ldb
+) as sub;
       `
     );
 
@@ -423,9 +432,9 @@ exports.getBorrowBill = async (companyname) => {
     dldb.DepID,
     bdep.DepName,
     ldb.Userid, 
-     bu.Person_Name AS BorrowerName,         
+    bu.Person_Name AS BorrowerName,         
     ldb.OfficerId, 
-      officer.Person_Name AS OfficerName,        -- Người xử lý/Officer
+    officer.Person_Name AS OfficerName,        -- Người xử lý/Officer
     ldb.LastMatNo, 
     dldb.LastName, 
     dldb.LastSize, 
@@ -677,11 +686,10 @@ exports.saveBill = async (companyName, body) => {
         });
         continue;
       }
-
       await db.Execute(
         companyName,
-        `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan, LastInOutNo)
-         VALUES ('${payload.ID_BILL}', '${payload.DepID}', '${payload.RFID}', GETDATE(), '${payload.StateScan}', '${LastInOutNo}')`
+        `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan, LastInOutNo,USERID)
+         VALUES ('${payload.ID_BILL}', '${payload.DepID}', '${payload.RFID}', GETDATE(), '${payload.StateScan}', '${LastInOutNo}', '${payload.ReceiverCardNumber}')`
       );
       await db.Execute(
         companyName,
@@ -2165,34 +2173,45 @@ exports.getAllPhomManagement = async (companyname, payload) => {
       `SELECT
     ldb.LastNo,
     ldb.LastSize,
-
-    -- RFID dạng mảng cho bản SQL Server cũ
     STUFF((
         SELECT ',' + ldb2.RFID
         FROM Last_Data_Binding ldb2
-        WHERE ldb2.LastNo = ldb.LastNo AND ldb2.LastSize = ldb.LastSize
+        WHERE ldb2.LastNo = ldb.LastNo 
+          AND ldb2.LastSize = ldb.LastSize
         FOR XML PATH(''), TYPE
     ).value('.', 'NVARCHAR(MAX)'), 1, 1, '') AS RFID_List,
 
-    -- Original columns
-    MIN(ldb.LastMatNo)   AS LastMatNo,
-    MIN(ldb.LastName)    AS LastName,
-    MIN(ldb.Material)    AS Material,
-    MIN(ldb.LastType)    AS LastType,
-    MIN(ldb.DateIn)      AS DateIn,
-    MIN(ldb.UserID)      AS UserID,
+    MIN(ldb.LastMatNo) AS LastMatNo,
+    MIN(ldb.LastName)  AS LastName,
+    MIN(ldb.Material)  AS Material,
+    MIN(ldb.LastType)  AS LastType,
+    MIN(ldb.DateIn)    AS DateIn,
+    MIN(ldb.UserID)    AS UserID,
 
-    -- Tổng số chiếc (không phân biệt trái/phải)
     COUNT(*) AS TotalQty,
-
-    -- Số đôi = Tổng số chiếc / 2 (kết quả có thể là số lẻ, ví dụ 5.5)
     CAST(COUNT(*) / 2.0 AS DECIMAL(10,1)) AS TotalPairs,
 
     -- Tổng số chiếc còn trong kho
     SUM(CASE WHEN ldb.isOut = 0 THEN 1 ELSE 0 END) AS QtyInStock_Total,
+    CAST(SUM(CASE WHEN ldb.isOut = 0 THEN 1 ELSE 0 END) / 2.0 AS DECIMAL(10,1)) AS QtyInStock_Pairs,
 
-    -- Số đôi còn trong kho = Tổng số chiếc trong kho / 2
-    CAST(SUM(CASE WHEN ldb.isOut = 0 THEN 1 ELSE 0 END) / 2.0 AS DECIMAL(10,1)) AS QtyInStock_Pairs
+    -- Tổng số mượn (số đôi)
+    CAST((
+        SELECT COUNT(*) / 2.0
+        FROM Last_Detail_Scan_Out lso
+        INNER JOIN Last_Data_Binding ldbx ON ldbx.RFID = lso.RFID
+        WHERE ldbx.LastNo = ldb.LastNo 
+          AND ldbx.LastSize = ldb.LastSize
+    ) AS DECIMAL(10,1)) AS TotalBorrowed_Pairs,
+
+    -- Tổng số trả (số đôi)
+    CAST((
+        SELECT COUNT(*) / 2.0
+        FROM Details_Last_Scan_Return lsr
+        INNER JOIN Last_Data_Binding ldbx ON ldbx.RFID = lsr.RFID
+        WHERE ldbx.LastNo = ldb.LastNo 
+          AND ldbx.LastSize = ldb.LastSize
+    ) AS DECIMAL(10,1)) AS TotalReturned_Pairs
 
 FROM
     Last_Data_Binding ldb
@@ -2570,6 +2589,100 @@ exports.updaterfidphom = async (companyname, payload) => {
       statusCode: 500,
       data: [],
       message: "Lỗi khi cập nhật RFID phom.",
+    };
+  }
+};
+
+exports.getMissingPhom = async (companyname, payload) => {
+  try {
+    const results = await db.Execute(
+      companyname,
+      `WITH LastStatus AS (
+    SELECT 
+        BD.DepName AS DepName,
+        ldb.RFID AS RFID_Check,
+        ldb.LastNo AS LastNo,
+        ldb.LastSize AS LastSize,
+        dlsr.StatusRFIDReturn,
+		ldb.isLost as isLost,
+        dlsr.ScanDate,
+        ROW_NUMBER() OVER (PARTITION BY dlsr.RFID ORDER BY dlsr.ScanDate DESC) AS rn
+    FROM Details_Last_Scan_Return dlsr
+    LEFT JOIN BDepartment BD ON BD.ID = dlsr.DepID
+    LEFT JOIN Last_Data_Binding ldb ON ldb.RFID = dlsr.RFID
+)
+SELECT DepName, RFID_Check, LastNo, LastSize, ScanDate, StatusRFIDReturn,isLost
+FROM LastStatus
+WHERE rn = 1
+  AND StatusRFIDReturn = 'Missing'
+ORDER BY DepName,LastNo, LastSize
+
+`
+    );
+    if (results.rowCount === 0) {
+      return {
+        status: "NULL",
+        statusCode: 203,
+        data: [],
+        message: "Không có phom nào bị mất.",
+      };
+    }
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: results.jsonArray,
+      message: "Danh sách phom mất.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi lấy phom missing:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi lấy phom missing.",
+    };
+  }
+};
+
+exports.confirmMissingPhom = async (companyname, payload) => {
+  try {
+    // xác định giá trị update
+    const isLostValue = payload.isLost === true ? 1 : 0;
+
+    // chạy update
+    const results = await db.Execute(
+      companyname,
+      `UPDATE Last_Data_Binding
+       SET isLost = ${isLostValue}
+       OUTPUT INSERTED.*
+       WHERE RFID = '${payload.RFID}'`
+    );
+
+    if (results.rowCount === 0) {
+      return {
+        status: "Error",
+        statusCode: 400,
+        data: [],
+        message: "Không tìm thấy phiếu missing nào.",
+      };
+    }
+
+    return {
+      status: "Success",
+      statusCode: 200,
+      data: results.jsonArray, // record vừa update trả về
+      message:
+        isLostValue === 1
+          ? "Xác nhận phom mất thành công."
+          : "Hủy trạng thái mất phom thành công.",
+    };
+  } catch (error) {
+    console.error("Lỗi khi xác nhận phom missing:", error);
+    return {
+      status: "Error",
+      statusCode: 500,
+      data: [],
+      message: "Lỗi khi xác nhận phom missing.",
     };
   }
 };
