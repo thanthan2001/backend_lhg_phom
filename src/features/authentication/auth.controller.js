@@ -5,6 +5,7 @@ exports.login = async (req, res) => {
   const companyName = req.body.companyName;
   const userID = req.body.userID;
   const pwd = req.body.pwd;
+  console.log(companyName, userID, pwd);
   const result = await authModel.login(companyName, userID, pwd);
   if (!result) {
     return res

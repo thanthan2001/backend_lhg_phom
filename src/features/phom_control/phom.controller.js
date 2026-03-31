@@ -282,6 +282,17 @@ exports.TimPhomRFID = async (req, res) => {
   }
 };
 
+exports.quickScanBorrow = async (req, res) => {
+  const payload = req.body;
+  const companyName = payload.companyName;
+  const result = await phomModel.quickScanBorrow(companyName, payload);
+  if (!result) {
+    res.status(500).json("No phom found");
+  } else {
+    res.status(result.statusCode || 200).json(result);
+  }
+};
+
 exports.getRFIDPhom = async (req, res) => {
   const payload = req.body;
   const companyName = payload.companyName;

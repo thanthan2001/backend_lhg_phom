@@ -21,6 +21,7 @@ router.post("/updaterfidphom", phomRoute.updatePhom);
 router.post("/submit_borrow", phomRoute.TaoPhieuMuonPhom);
 router.post("/layphieumuon", phomRoute.LayPhieuMuonPhom);
 router.post("/getphomrfid", phomRoute.TimPhomRFID);
+router.post("/quickScanBorrow", phomRoute.quickScanBorrow);
 router.post("/getInfoPhom", phomRoute.getInfoPhom);
 router.post("/saveBill", phomRoute.saveBill);
 router.post("/getOldBill", phomRoute.getOldBill);
