@@ -1105,85 +1105,118 @@ WHERE lnm.LastName = '${TenPhom}';
 //     };
 //   }
 // };
+
 exports.bindingPhom = async (companyname, payload) => {
   try {
-    let successCount = 0;
-    let failCount = 0;
-    let failedRFIDs = [];
-    let insertedItems = [];
+    const details = payload.details || [];
+    if (!companyname || details.length === 0) {
+      return { status: "Error", statusCode: 400, data: [], message: "Dữ liệu trống." };
+    }
 
-    for (const item of payload.details) {
+    // 1. Lấy danh sách toàn bộ RFID để check 1 lần duy nhất
+    const allRFIDs = details.map((item) => String(item.RFID || '').trim().replace(/'/g, "''")).filter(Boolean);
+    const existingRFIDs = new Set();
+
+    // Chia chunk 500 để check tránh lỗi chuỗi IN quá dài
+    const chunkSize = 500;
+    for (let i = 0; i < allRFIDs.length; i += chunkSize) {
+      const chunk = allRFIDs.slice(i, i + chunkSize);
+      const inClause = chunk.map((rfid) => `'${rfid}'`).join(",");
       const checkRFIDExists = await db.Execute(
         companyname,
-        `SELECT * FROM Last_Data_Binding WHERE RFID = '${item.RFID}'`,
+        `SELECT RFID FROM Last_Data_Binding WHERE RFID IN (${inClause})`
       );
-
-      if (checkRFIDExists && checkRFIDExists.jsonArray.length > 0) {
-        failCount++;
-        failedRFIDs.push(item.RFID);
-        continue;
+      if (checkRFIDExists && checkRFIDExists.jsonArray) {
+        checkRFIDExists.jsonArray.forEach((row) => existingRFIDs.add(row.RFID));
       }
+    }
 
-      // Insert nếu RFID chưa tồn tại
-      await db.Execute(
-        companyname,
-        `
-        INSERT INTO Last_Data_Binding 
-        (RFID, LastMatNo, LastName, LastNo, LastType, Material, LastSize, LastSide, UserID, ShelfName, DateIn,RFID_Shortcut)
-        VALUES (
-          '${item.RFID}', '${item.LastMatNo}', '${item.LastName}', '${item.LastNo}',
-          '${item.LastType}', '${item.Material}', '${item.LastSize}', '${item.LastSide}',
-          '${item.UserID}', '${item.ShelfName}', GETDATE(), '${item.RFIDShortcut}'
-        )
-        `,
-      );
+    // 2. Phân loại mã Lỗi (đã tồn tại) và mã Hợp lệ (cần Insert)
+    const failedRFIDs = [];
+    const itemsToInsert = [];
 
-      const insertedData = await db.Execute(
-        companyname,
-        `SELECT * FROM Last_Data_Binding WHERE RFID = '${item.RFID}'`,
-      );
+    for (const item of details) {
+      if (existingRFIDs.has(item.RFID)) {
+        failedRFIDs.push(item.RFID);
+      } else {
+        itemsToInsert.push(item);
+      }
+    }
 
-      if (insertedData && insertedData.jsonArray.length > 0) {
-        successCount++;
-        insertedItems.push(insertedData.jsonArray[0]);
+    // 3. BULK INSERT hàng loạt các mã chưa tồn tại
+    if (itemsToInsert.length > 0) {
+      for (let i = 0; i < itemsToInsert.length; i += chunkSize) {
+        const chunk = itemsToInsert.slice(i, i + chunkSize);
+        const insertValues = chunk.map((item) => {
+          // Khử ký tự nháy đơn chống SQL Injection
+          const rfid = String(item.RFID || '').replace(/'/g, "''");
+          const matNo = String(item.LastMatNo || '').replace(/'/g, "''");
+          const lastName = String(item.LastName || '').replace(/'/g, "''");
+          const lastNo = String(item.LastNo || '').replace(/'/g, "''");
+          const type = String(item.LastType || '').replace(/'/g, "''");
+          const mat = String(item.Material || '').replace(/'/g, "''");
+          const size = String(item.LastSize || '').replace(/'/g, "''");
+          const side = String(item.LastSide || '').replace(/'/g, "''");
+          const user = String(item.UserID || '').replace(/'/g, "''");
+          const shelf = String(item.ShelfName || '').replace(/'/g, "''");
+          const shortcut = String(item.RFIDShortcut || '').replace(/'/g, "''");
+
+          return `('${rfid}', '${matNo}', '${lastName}', '${lastNo}', '${type}', '${mat}', '${size}', '${side}', '${user}', '${shelf}', GETDATE(), '${shortcut}')`;
+        }).join(",");
+
+        await db.Execute(
+          companyname,
+          `INSERT INTO Last_Data_Binding 
+          (RFID, LastMatNo, LastName, LastNo, LastType, Material, LastSize, LastSide, UserID, ShelfName, DateIn, RFID_Shortcut)
+          VALUES ${insertValues}`
+        );
       }
     }
 
     return {
       status: "Success",
       statusCode: 200,
-      data: insertedItems,
+      data: itemsToInsert, // Trả luôn mảng đã lọc thay vì Select lại tốn tài nguyên
       message: "Gán phom hoàn tất.",
       summary: {
-        successCount,
-        failCount,
+        successCount: itemsToInsert.length,
+        failCount: failedRFIDs.length,
         failedRFIDs,
       },
     };
   } catch (error) {
     console.error("Lỗi khi gán phom:", error);
-    return {
-      status: "Error",
-      statusCode: 500,
-      data: [],
-      message: "Lỗi khi gán phom.",
-    };
+    return { status: "Error", statusCode: 500, data: [], message: "Lỗi khi gán phom: " + error.message };
   }
 };
-
 exports.checkExitsRFID = async (companyName, ListRFID) => {
   try {
+    if (!ListRFID || ListRFID.length === 0) {
+      return { status: "NotExists", statusCode: 200, data: [], message: "Danh sách kiểm tra trống." };
+    }
+
     const failedList = [];
-    for (const rfid of ListRFID) {
+    const chunkSize = 500;
+
+    // Lặp qua từng Chunk để đề phòng ListRFID gửi lên có 5000 mã gây quá tải câu lệnh SQL
+    for (let i = 0; i < ListRFID.length; i += chunkSize) {
+      const chunk = ListRFID.slice(i, i + chunkSize);
+      const inClause = chunk.map((rfid) => `'${String(rfid).replace(/'/g, "''")}'`).join(",");
+
       const results = await db.Execute(
         companyName,
-        `SELECT * FROM Last_Data_Binding WHERE RFID = '${rfid}'`,
+        `SELECT * FROM Last_Data_Binding WHERE RFID IN (${inClause})`
       );
-      if (results && results.jsonArray.length > 0) {
-        failedList.push({ data: results.jsonArray });
+
+      if (results && results.jsonArray && results.jsonArray.length > 0) {
+        // Gom data giống cấu trúc cũ của bạn
+        results.jsonArray.forEach(row => {
+          failedList.push({ data: [row] });
+        });
       }
     }
-    if (failedList && failedList.length > 0) {
+
+    if (failedList.length > 0) {
       return {
         status: "Exists",
         statusCode: 400,
@@ -1191,6 +1224,7 @@ exports.checkExitsRFID = async (companyName, ListRFID) => {
         message: `Đã có phom tồn tại trong hệ thống`,
       };
     }
+
     return {
       status: "NotExists",
       statusCode: 200,
@@ -1199,82 +1233,171 @@ exports.checkExitsRFID = async (companyName, ListRFID) => {
     };
   } catch (error) {
     console.error("Lỗi khi kiểm tra RFID:", error);
-    return {
-      status: "Error",
-      statusCode: 500,
-      data: [],
-      message: "Lỗi khi kiểm tra RFID.",
-    };
+    return { status: "Error", statusCode: 500, data: [], message: "Lỗi khi kiểm tra RFID: " + error.message };
   }
 };
 
 exports.updatePhom = async (companyname, items) => {
+  if (!items || items.length === 0) {
+    return { statusCode: 200, message: "Không có dữ liệu cập nhật.", data: { successes: [], failures: [], totalSuccess: 0, totalFailure: 0 }};
+  }
+
   const successList = [];
   const failureList = [];
 
-  const updatePromises = items.map((item) => {
-    const {
-      RFID,
-      LastMatNo,
-      LastName,
-      LastType,
-      LastNo,
-      Material,
-      LastSize,
-      LastSide,
-      UserID,
-      ShelfName,
-      DateIn,
-    } = item;
+  try {
+    // Gom các câu UPDATE lại thành 1 chuỗi dài, mỗi lần chạy tối đa 200 câu lệnh để SQL không bị đuối
+    const chunkSize = 200;
+    
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      let batchedUpdateQuery = "";
 
-    const sqlQuery = `
-      UPDATE Last_Data_Binding SET
-        LastMatNo = '${LastMatNo}',
-        LastName = '${LastName}',
-        LastType = '${LastType}',
-        LastNo = '${LastNo}',
-        Material = '${Material}',
-        LastSize = '${LastSize}',
-        LastSide = '${LastSide}',
-        UserID = '${UserID}',
-        ShelfName = '${ShelfName}',
-        DateIn = GETDATE()
-      WHERE RFID = '${RFID}'
-    `;
+      chunk.forEach((item) => {
+        const rfid = String(item.RFID || '').replace(/'/g, "''");
+        const matNo = String(item.LastMatNo || '').replace(/'/g, "''");
+        const lastName = String(item.LastName || '').replace(/'/g, "''");
+        const type = String(item.LastType || '').replace(/'/g, "''");
+        const lastNo = String(item.LastNo || '').replace(/'/g, "''");
+        const mat = String(item.Material || '').replace(/'/g, "''");
+        const size = String(item.LastSize || '').replace(/'/g, "''");
+        const side = String(item.LastSide || '').replace(/'/g, "''");
+        const user = String(item.UserID || '').replace(/'/g, "''");
+        const shelf = String(item.ShelfName || '').replace(/'/g, "''");
 
-    return db.Execute(companyname, sqlQuery);
-  });
-
-  const results = await Promise.allSettled(updatePromises);
-
-  results.forEach((result, index) => {
-    const originalItem = items[index];
-
-    if (result.status === "fulfilled") {
-      successList.push({
-        rfid: originalItem.rfid,
-        message: "Cập nhật thành công.",
+        batchedUpdateQuery += `
+          UPDATE Last_Data_Binding SET
+            LastMatNo = '${matNo}', LastName = '${lastName}', LastType = '${type}', LastNo = '${lastNo}',
+            Material = '${mat}', LastSize = '${size}', LastSide = '${side}', UserID = '${user}',
+            ShelfName = '${shelf}', DateIn = GETDATE()
+          WHERE RFID = '${rfid}';
+        `;
       });
-    } else {
-      failureList.push({
-        rfid: originalItem.rfid,
-        error: result.reason.message || "Lỗi không xác định từ CSDL",
-      });
+
+      try {
+        // Gửi 1 cục lệnh (gồm 200 lệnh UPDATE nhỏ) xuống DB trong 1 lần gọi
+        await db.Execute(companyname, batchedUpdateQuery);
+        
+        // Nếu Batch này thành công, đưa toàn bộ chunk vào danh sách success
+        chunk.forEach(item => {
+          successList.push({ rfid: item.RFID || item.rfid, message: "Cập nhật thành công." });
+        });
+      } catch (chunkError) {
+        // Nếu cục Update này thất bại, đẩy toàn bộ chunk đó vào failure
+        console.error("Lỗi khi update một batch:", chunkError);
+        chunk.forEach(item => {
+          failureList.push({ rfid: item.RFID || item.rfid, error: chunkError.message || "Lỗi cập nhật từ CSDL" });
+        });
+      }
     }
-  });
 
-  // Trả về một đối tượng chứa cả hai danh sách
-  return {
-    statusCode: 200,
-    message: "Hoàn tất xử lý lô cập nhật.",
-    data: {
-      successes: successList,
-      failures: failureList,
-      totalSuccess: successList.length,
-      totalFailure: failureList.length,
-    },
-  };
+    return {
+      statusCode: 200,
+      message: "Hoàn tất xử lý lô cập nhật.",
+      data: {
+        successes: successList,
+        failures: failureList,
+        totalSuccess: successList.length,
+        totalFailure: failureList.length,
+      },
+    };
+  } catch (error) {
+    console.error("Lỗi tổng quát khi cập nhật phom:", error);
+    return {
+      statusCode: 500,
+      message: "Lỗi hệ thống khi cập nhật.",
+      data: { successes: successList, failures: failureList, totalSuccess: successList.length, totalFailure: failureList.length }
+    };
+  }
 };
+// exports.updatePhom = async (companyname, items) => {
+//   if (!items || items.length === 0) {
+//     return {
+//       statusCode: 200,
+//       message: "Không có dữ liệu cập nhật.",
+//       data: { successes: [], failures: [], totalSuccess: 0, totalFailure: 0 },
+//     };
+//   }
+
+//   const successList = [];
+//   const failureList = [];
+
+//   try {
+//     // Gom các câu UPDATE lại thành 1 chuỗi dài, mỗi lần chạy tối đa 200 câu lệnh để SQL không bị đuối
+//     const chunkSize = 200;
+
+//     for (let i = 0; i < items.length; i += chunkSize) {
+//       const chunk = items.slice(i, i + chunkSize);
+//       let batchedUpdateQuery = "";
+
+//       chunk.forEach((item) => {
+//         const rfid = String(item.RFID || "").replace(/'/g, "''");
+//         const matNo = String(item.LastMatNo || "").replace(/'/g, "''");
+//         const lastName = String(item.LastName || "").replace(/'/g, "''");
+//         const type = String(item.LastType || "").replace(/'/g, "''");
+//         const lastNo = String(item.LastNo || "").replace(/'/g, "''");
+//         const mat = String(item.Material || "").replace(/'/g, "''");
+//         const size = String(item.LastSize || "").replace(/'/g, "''");
+//         const side = String(item.LastSide || "").replace(/'/g, "''");
+//         const user = String(item.UserID || "").replace(/'/g, "''");
+//         const shelf = String(item.ShelfName || "").replace(/'/g, "''");
+
+//         batchedUpdateQuery += `
+//           UPDATE Last_Data_Binding SET
+//             LastMatNo = '${matNo}', LastName = '${lastName}', LastType = '${type}', LastNo = '${lastNo}',
+//             Material = '${mat}', LastSize = '${size}', LastSide = '${side}', UserID = '${user}',
+//             ShelfName = '${shelf}', DateIn = GETDATE()
+//           WHERE RFID = '${rfid}';
+//         `;
+//       });
+
+//       try {
+//         // Gửi 1 cục lệnh (gồm 200 lệnh UPDATE nhỏ) xuống DB trong 1 lần gọi
+//         await db.Execute(companyname, batchedUpdateQuery);
+
+//         // Nếu Batch này thành công, đưa toàn bộ chunk vào danh sách success
+//         chunk.forEach((item) => {
+//           successList.push({
+//             rfid: item.RFID || item.rfid,
+//             message: "Cập nhật thành công.",
+//           });
+//         });
+//       } catch (chunkError) {
+//         // Nếu cục Update này thất bại, đẩy toàn bộ chunk đó vào failure
+//         console.error("Lỗi khi update một batch:", chunkError);
+//         chunk.forEach((item) => {
+//           failureList.push({
+//             rfid: item.RFID || item.rfid,
+//             error: chunkError.message || "Lỗi cập nhật từ CSDL",
+//           });
+//         });
+//       }
+//     }
+
+//     return {
+//       statusCode: 200,
+//       message: "Hoàn tất xử lý lô cập nhật.",
+//       data: {
+//         successes: successList,
+//         failures: failureList,
+//         totalSuccess: successList.length,
+//         totalFailure: failureList.length,
+//       },
+//     };
+//   } catch (error) {
+//     console.error("Lỗi tổng quát khi cập nhật phom:", error);
+//     return {
+//       statusCode: 500,
+//       message: "Lỗi hệ thống khi cập nhật.",
+//       data: {
+//         successes: successList,
+//         failures: failureList,
+//         totalSuccess: successList.length,
+//         totalFailure: failureList.length,
+//       },
+//     };
+//   }
+// };
 exports.ScanPhomMuonTra = async (companyname, RFID) => {
   try {
     // Kiểm tra xem RFID đã tồn tại trong bảng hay chưa
@@ -1476,14 +1599,267 @@ exports.TimPhomRFID = async (companyname, payload) => {
   }
 };
 
+// exports.quickScanBorrow = async (companyname, payload) => {
+//   try {
+//     const depID = payload.DepID;
+//     const userID = payload.UserID || payload.userId || "SYSTEM";
+//     const officerId = payload.OfficerId || "";
+//     const epcListRaw = payload.EPCList || payload.epcList || payload.ListEPC || [];
+
+//     const toPositiveInt = (value, fallback) => {
+//       const parsed = Number(value);
+//       return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+//     };
+
+//     const throttleMsRaw = Number(process.env.QUICKSCAN_THROTTLE_MS || 120);
+//     const throttleMs = Number.isFinite(throttleMsRaw) && throttleMsRaw > 0 ? throttleMsRaw : 0;
+//     const queryChunkSize = toPositiveInt(process.env.QUICKSCAN_QUERY_CHUNK_SIZE, 200);
+//     const pauseEvery = toPositiveInt(process.env.QUICKSCAN_PAUSE_EVERY, 20);
+//     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+//     if (!companyname || !depID || !Array.isArray(epcListRaw) || epcListRaw.length === 0) {
+//       return {
+//         status: "Error",
+//         statusCode: 400,
+//         data: [],
+//         message: "Thiếu companyName, DepID hoặc danh sách EPC.",
+//       };
+//     }
+
+//     const epcList = [...new Set(epcListRaw.map((x) => `${x}`.trim()).filter(Boolean))];
+//     if (epcList.length === 0) {
+//       return {
+//         status: "Error",
+//         statusCode: 400,
+//         data: [],
+//         message: "Danh sách EPC không hợp lệ.",
+//       };
+//     }
+
+//     const foundList = [];
+//     for (let i = 0; i < epcList.length; i += queryChunkSize) {
+//       const chunk = epcList.slice(i, i + queryChunkSize);
+//       const inClause = chunk.map((epc) => `'${epc.replace(/'/g, "''")}'`).join(",");
+//       const phomData = await db.Execute(
+//         companyname,
+//         `SELECT RFID, LastMatNo, LastNo, LastSize, LastSide, isOut, isLost
+//          FROM Last_Data_Binding
+//          WHERE RFID IN (${inClause})`,
+//       );
+//       foundList.push(...(phomData?.jsonArray || []));
+
+//       if (throttleMs > 0 && i + queryChunkSize < epcList.length) {
+//         await sleep(throttleMs);
+//       }
+//     }
+
+//     const foundMap = new Map(foundList.map((item) => [item.RFID, item]));
+
+//     const notFoundEPC = epcList.filter((epc) => !foundMap.has(epc));
+//     const outEPC = foundList.filter((x) => Number(x.isOut) === 1).map((x) => x.RFID);
+//     const lostEPC = foundList
+//       .filter((x) => x.isLost === 1 || x.isLost === "1" || x.isLost === true)
+//       .map((x) => x.RFID);
+
+//     const validList = foundList.filter(
+//       (x) =>
+//         Number(x.isOut) !== 1 &&
+//         !(x.isLost === 1 || x.isLost === "1" || x.isLost === true),
+//     );
+
+//     if (validList.length === 0) {
+//       return {
+//         status: "Error",
+//         statusCode: 400,
+//         data: [],
+//         invalidEPC: {
+//           notFoundEPC,
+//           outEPC,
+//           lostEPC,
+//         },
+//         message: "Không có EPC hợp lệ để tạo phiếu mượn.",
+//       };
+//     }
+
+//     const matNoGroupMap = {};
+//     for (const item of validList) {
+//       if (!matNoGroupMap[item.LastMatNo]) {
+//         matNoGroupMap[item.LastMatNo] = [];
+//       }
+//       matNoGroupMap[item.LastMatNo].push(item);
+//     }
+
+//     const dateBorrow = payload.DateBorrow || new Date().toISOString().slice(0, 19).replace("T", " ");
+//     const dateReceive = payload.DateReceive || dateBorrow;
+
+//     const createdBills = [];
+//     for (const [lastMatNo, matNoItems] of Object.entries(matNoGroupMap)) {
+//       const groupedMap = {};
+//       for (const item of matNoItems) {
+//         const key = `${item.LastMatNo}__${item.LastNo}__${item.LastSize}`;
+//         if (!groupedMap[key]) {
+//           groupedMap[key] = {
+//             LastMatNo: item.LastMatNo,
+//             LastName: item.LastNo,
+//             LastSize: item.LastSize,
+//             LastSum: 0,
+//           };
+//         }
+
+//         const step = item.LastSide === "Left" || item.LastSide === "Right" ? 0.5 : 1;
+//         groupedMap[key].LastSum = Number(groupedMap[key].LastSum) + step;
+//       }
+
+//       const details = Object.values(groupedMap);
+
+//       const createBill = await db.Execute(
+//         companyname,
+//         `EXEC Insert_Last_Data_Bill
+//             @Userid = '${userID}',
+//             @DepID = '${depID}',
+//             @DateBorrow = '${dateBorrow}',
+//             @DateReceive = '${dateReceive}',
+//             @LastMatNo = '${lastMatNo}',
+//             @isConfirm = 1,
+//             @StateLastBill = 0,
+//             @OfficerId = '${officerId}'`,
+//       );
+
+//       const ID_BILL = createBill?.jsonArray?.[0]?.ID_bill;
+//       if (!ID_BILL) {
+//         return {
+//           status: "Error",
+//           statusCode: 500,
+//           data: [],
+//           message: `Không tạo được phiếu mượn cho LastMatNo ${lastMatNo}.`,
+//         };
+//       }
+
+//       for (let i = 0; i < details.length; i += 1) {
+//         const item = details[i];
+//         const lastSumValue = Number(item.LastSum || 0) / 2;
+//         await db.Execute(
+//           companyname,
+//           `EXEC Insert_Detail_Last_Data_Bill
+//               @ID_bill = '${ID_BILL}',
+//               @DepID = '${depID}',
+//               @LastMatNo = '${item.LastMatNo}',
+//               @LastName = N'${item.LastName}',
+//               @LastSize = '${item.LastSize}',
+//               @LastSum = ${lastSumValue};`,
+//         );
+
+//         if (throttleMs > 0 && (i + 1) % pauseEvery === 0) {
+//           await sleep(throttleMs);
+//         }
+//       }
+
+//       const LO = await db.Execute(companyname, `EXEC sp_GenerateLastInOutNo`);
+//       const LastInOutNo = LO?.jsonArray?.[0]?.NewLastInOutNo;
+
+//       for (let i = 0; i < matNoItems.length; i += 1) {
+//         const item = matNoItems[i];
+//         await db.Execute(
+//           companyname,
+//           `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan, LastInOutNo, USERID)
+//            VALUES ('${ID_BILL}', '${depID}', '${item.RFID}', GETDATE(), 0, '${LastInOutNo}', '${userID}')`,
+//         );
+
+//         await db.Execute(
+//           companyname,
+//           `UPDATE Last_Data_Binding SET isOut = 1 WHERE RFID = '${item.RFID}'`,
+//         );
+
+//         if (throttleMs > 0 && (i + 1) % pauseEvery === 0) {
+//           await sleep(throttleMs);
+//         }
+//       }
+
+//       await db.Execute(
+//         companyname,
+//         `UPDATE Last_Data_Bill
+//          SET StateLastBill = 1,
+//              LastInOutNo = '${LastInOutNo}',
+//              ToTalPhomNotBinding = 0
+//          WHERE ID_bill = '${ID_BILL}'`,
+//       );
+
+//       const lastInOutQty = details.reduce((acc, item) => acc + Number(item.LastSum || 0), 0);
+
+//       await db.Execute(
+//         companyname,
+//         `INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
+//          VALUES ('${LastInOutNo}', ${lastInOutQty}, '${userID}', GETDATE(), 'Y', '${lastMatNo}')`,
+//       );
+
+//       await db.Execute(
+//         companyname,
+//         `INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
+//          VALUES ('${LastInOutNo}', GETDATE(), 'Out', 'BorrowOut', '${depID}', NULL, 'Y', '${userID}', GETDATE(), NULL, NULL)`,
+//       );
+
+//       for (let i = 0; i < details.length; i += 1) {
+//         const item = details[i];
+//         await db.Execute(
+//           companyname,
+//           `INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
+//            VALUES ('${LastInOutNo}', '${item.LastSize}', ${Number(item.LastSum || 0)}, 'Y', '${userID}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')`,
+//         );
+
+//         if (throttleMs > 0 && (i + 1) % pauseEvery === 0) {
+//           await sleep(throttleMs);
+//         }
+//       }
+
+//       createdBills.push({
+//         ID_BILL,
+//         LastInOutNo,
+//         DepID: depID,
+//         LastMatNo: lastMatNo,
+//         details,
+//         scannedEPC: matNoItems.map((x) => x.RFID),
+//       });
+//     }
+
+//     return {
+//       status: "Success",
+//       statusCode: 200,
+//       data: {
+//         DepID: depID,
+//         totalBills: createdBills.length,
+//         bills: createdBills,
+//       },
+//       invalidEPC: {
+//         notFoundEPC,
+//         outEPC,
+//         lostEPC,
+//       },
+//       message: "Scan nhanh thành công.",
+//     };
+//   } catch (error) {
+//     console.error("Lỗi quickScanBorrow:", error);
+//     return {
+//       status: "Error",
+//       statusCode: 500,
+//       data: [],
+//       message: "Lỗi khi scan nhanh phiếu mượn.",
+//     };
+//   }
+// };
 exports.quickScanBorrow = async (companyname, payload) => {
   try {
     const depID = payload.DepID;
     const userID = payload.UserID || payload.userId || "SYSTEM";
     const officerId = payload.OfficerId || "";
-    const epcListRaw = payload.EPCList || payload.epcList || payload.ListEPC || [];
+    const epcListRaw =
+      payload.EPCList || payload.epcList || payload.ListEPC || [];
 
-    if (!companyname || !depID || !Array.isArray(epcListRaw) || epcListRaw.length === 0) {
+    if (
+      !companyname ||
+      !depID ||
+      !Array.isArray(epcListRaw) ||
+      epcListRaw.length === 0
+    ) {
       return {
         status: "Error",
         statusCode: 400,
@@ -1492,7 +1868,9 @@ exports.quickScanBorrow = async (companyname, payload) => {
       };
     }
 
-    const epcList = [...new Set(epcListRaw.map((x) => `${x}`.trim()).filter(Boolean))];
+    const epcList = [
+      ...new Set(epcListRaw.map((x) => `${x}`.trim()).filter(Boolean)),
+    ];
     if (epcList.length === 0) {
       return {
         status: "Error",
@@ -1502,23 +1880,31 @@ exports.quickScanBorrow = async (companyname, payload) => {
       };
     }
 
-    const inClause = epcList.map((epc) => `'${epc.replace(/'/g, "''")}'`).join(",");
-    const phomData = await db.Execute(
-      companyname,
-      `SELECT RFID, LastMatNo, LastNo, LastSize, LastSide, isOut, isLost
-       FROM Last_Data_Binding
-       WHERE RFID IN (${inClause})`,
-    );
+    // 1. CHUNK SELECT ĐÃ TỐT SẴN (Gữ nguyên)
+    const queryChunkSize = 200;
+    const foundList = [];
+    for (let i = 0; i < epcList.length; i += queryChunkSize) {
+      const chunk = epcList.slice(i, i + queryChunkSize);
+      const inClause = chunk
+        .map((epc) => `'${epc.replace(/'/g, "''")}'`)
+        .join(",");
+      const phomData = await db.Execute(
+        companyname,
+        `SELECT RFID, LastMatNo, LastNo, LastSize, LastSide, isOut, isLost
+         FROM Last_Data_Binding
+         WHERE RFID IN (${inClause})`,
+      );
+      foundList.push(...(phomData?.jsonArray || []));
+    }
 
-    const foundList = phomData?.jsonArray || [];
     const foundMap = new Map(foundList.map((item) => [item.RFID, item]));
-
     const notFoundEPC = epcList.filter((epc) => !foundMap.has(epc));
-    const outEPC = foundList.filter((x) => Number(x.isOut) === 1).map((x) => x.RFID);
+    const outEPC = foundList
+      .filter((x) => Number(x.isOut) === 1)
+      .map((x) => x.RFID);
     const lostEPC = foundList
       .filter((x) => x.isLost === 1 || x.isLost === "1" || x.isLost === true)
       .map((x) => x.RFID);
-
     const validList = foundList.filter(
       (x) =>
         Number(x.isOut) !== 1 &&
@@ -1530,27 +1916,26 @@ exports.quickScanBorrow = async (companyname, payload) => {
         status: "Error",
         statusCode: 400,
         data: [],
-        invalidEPC: {
-          notFoundEPC,
-          outEPC,
-          lostEPC,
-        },
+        invalidEPC: { notFoundEPC, outEPC, lostEPC },
         message: "Không có EPC hợp lệ để tạo phiếu mượn.",
       };
     }
 
     const matNoGroupMap = {};
     for (const item of validList) {
-      if (!matNoGroupMap[item.LastMatNo]) {
-        matNoGroupMap[item.LastMatNo] = [];
-      }
+      if (!matNoGroupMap[item.LastMatNo]) matNoGroupMap[item.LastMatNo] = [];
       matNoGroupMap[item.LastMatNo].push(item);
     }
 
-    const dateBorrow = payload.DateBorrow || new Date().toISOString().slice(0, 19).replace("T", " ");
+    const dateBorrow =
+      payload.DateBorrow ||
+      new Date().toISOString().slice(0, 19).replace("T", " ");
     const dateReceive = payload.DateReceive || dateBorrow;
-
     const createdBills = [];
+
+    // ==========================================
+    // BẮT ĐẦU TỐI ƯU HÓA PHẦN INSERT / UPDATE
+    // ==========================================
     for (const [lastMatNo, matNoItems] of Object.entries(matNoGroupMap)) {
       const groupedMap = {};
       for (const item of matNoItems) {
@@ -1563,93 +1948,102 @@ exports.quickScanBorrow = async (companyname, payload) => {
             LastSum: 0,
           };
         }
-
-        const step = item.LastSide === "Left" || item.LastSide === "Right" ? 0.5 : 1;
+        const step =
+          item.LastSide === "Left" || item.LastSide === "Right" ? 0.5 : 1;
         groupedMap[key].LastSum = Number(groupedMap[key].LastSum) + step;
       }
-
       const details = Object.values(groupedMap);
 
+      // Tạo Bill Master
       const createBill = await db.Execute(
         companyname,
-        `EXEC Insert_Last_Data_Bill
-            @Userid = '${userID}',
-            @DepID = '${depID}',
-            @DateBorrow = '${dateBorrow}',
-            @DateReceive = '${dateReceive}',
-            @LastMatNo = '${lastMatNo}',
-            @isConfirm = 1,
-            @StateLastBill = 0,
-            @OfficerId = '${officerId}'`,
+        `EXEC Insert_Last_Data_Bill @Userid = '${userID}', @DepID = '${depID}', @DateBorrow = '${dateBorrow}', @DateReceive = '${dateReceive}', @LastMatNo = '${lastMatNo}', @isConfirm = 1, @StateLastBill = 0, @OfficerId = '${officerId}'`,
       );
-
       const ID_BILL = createBill?.jsonArray?.[0]?.ID_bill;
-      if (!ID_BILL) {
-        return {
-          status: "Error",
-          statusCode: 500,
-          data: [],
-          message: `Không tạo được phiếu mượn cho LastMatNo ${lastMatNo}.`,
-        };
-      }
-
-      for (const item of details) {
-        await db.Execute(
-          companyname,
-          `EXEC Insert_Detail_Last_Data_Bill
-              @ID_bill = '${ID_BILL}',
-              @DepID = '${depID}',
-              @LastMatNo = '${item.LastMatNo}',
-              @LastName = N'${item.LastName}',
-              @LastSize = '${item.LastSize}',
-              @LastSum = ${item.LastSum}`,
+      if (!ID_BILL)
+        throw new Error(
+          `Không tạo được phiếu mượn cho LastMatNo ${lastMatNo}.`,
         );
-      }
 
+      // -------------------------------------------------------------
+      // TỐI ƯU 1: GỘP NHIỀU CÂU LỆNH EXEC THÀNH 1 LẦN CHẠY
+      // Thay vì for -> await 200 lần, ta ghép chuỗi và gọi db.Execute 1 lần
+      // -------------------------------------------------------------
+      let detailExecQueries = "";
+      for (const item of details) {
+        const lastSumValue = Number(item.LastSum || 0) / 2;
+        detailExecQueries += `EXEC Insert_Detail_Last_Data_Bill @ID_bill = '${ID_BILL}', @DepID = '${depID}', @LastMatNo = '${item.LastMatNo}', @LastName = N'${item.LastName}', @LastSize = '${item.LastSize}', @LastSum = ${lastSumValue}; `;
+      }
+      if (detailExecQueries) await db.Execute(companyname, detailExecQueries);
+
+      // Lấy số phiếu
       const LO = await db.Execute(companyname, `EXEC sp_GenerateLastInOutNo`);
       const LastInOutNo = LO?.jsonArray?.[0]?.NewLastInOutNo;
 
-      for (const item of matNoItems) {
+      // -------------------------------------------------------------
+      // TỐI ƯU 2: LƯU HÀNG LOẠT (BULK INSERT) + BULK UPDATE
+      // (Mỗi lệnh INSERT VALUES giới hạn 1000 dòng, nên chia chunk là an toàn nhất)
+      // -------------------------------------------------------------
+      const chunkSize = 500;
+      for (let i = 0; i < matNoItems.length; i += chunkSize) {
+        const chunkItems = matNoItems.slice(i, i + chunkSize);
+
+        // 1. Bulk Insert vào Last_Detail_Scan_Out
+        const insertValues = chunkItems
+          .map(
+            (item) =>
+              `('${ID_BILL}', '${depID}', '${item.RFID}', GETDATE(), 0, '${LastInOutNo}', '${userID}')`,
+          )
+          .join(",");
         await db.Execute(
           companyname,
-          `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan, LastInOutNo, USERID)
-           VALUES ('${ID_BILL}', '${depID}', '${item.RFID}', GETDATE(), 0, '${LastInOutNo}', '${userID}')`,
+          `INSERT INTO Last_Detail_Scan_Out (ID_BILL, DepID, RFID, ScanDate, StateScan, LastInOutNo, USERID) VALUES ${insertValues}`,
         );
 
+        // 2. Bulk Update vào Last_Data_Binding
+        const updateRfids = chunkItems
+          .map((item) => `'${item.RFID}'`)
+          .join(",");
         await db.Execute(
           companyname,
-          `UPDATE Last_Data_Binding SET isOut = 1 WHERE RFID = '${item.RFID}'`,
+          `UPDATE Last_Data_Binding SET isOut = 1 WHERE RFID IN (${updateRfids})`,
         );
       }
 
+      // Update Bill Status
       await db.Execute(
         companyname,
-        `UPDATE Last_Data_Bill
-         SET StateLastBill = 1,
-             LastInOutNo = '${LastInOutNo}',
-             ToTalPhomNotBinding = 0
-         WHERE ID_bill = '${ID_BILL}'`,
+        `UPDATE Last_Data_Bill SET StateLastBill = 1, LastInOutNo = '${LastInOutNo}', ToTalPhomNotBinding = 0 WHERE ID_bill = '${ID_BILL}'`,
       );
 
-      const lastInOutQty = details.reduce((acc, item) => acc + Number(item.LastSum || 0), 0);
-
+      // Insert Master InOut
+      const lastInOutQty = details.reduce(
+        (acc, item) => acc + Number(item.LastSum || 0),
+        0,
+      );
       await db.Execute(
         companyname,
-        `INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
-         VALUES ('${LastInOutNo}', ${lastInOutQty}, '${userID}', GETDATE(), 'Y', '${lastMatNo}')`,
+        `INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo) VALUES ('${LastInOutNo}', ${lastInOutQty}, '${userID}', GETDATE(), 'Y', '${lastMatNo}')`,
       );
-
       await db.Execute(
         companyname,
-        `INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
-         VALUES ('${LastInOutNo}', GETDATE(), 'Out', 'BorrowOut', '${depID}', NULL, 'Y', '${userID}', GETDATE(), NULL, NULL)`,
+        `INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate) VALUES ('${LastInOutNo}', GETDATE(), 'Out', 'BorrowOut', '${depID}', NULL, 'Y', '${userID}', GETDATE(), NULL, NULL)`,
       );
 
-      for (const item of details) {
+      // -------------------------------------------------------------
+      // TỐI ƯU 3: BULK INSERT CHO DETAIL INOUT
+      // -------------------------------------------------------------
+      for (let i = 0; i < details.length; i += chunkSize) {
+        const chunkDetails = details.slice(i, i + chunkSize);
+        const detailValues = chunkDetails
+          .map(
+            (item) =>
+              `('${LastInOutNo}', '${item.LastSize}', ${Number(item.LastSum || 0)}, 'Y', '${userID}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')`,
+          )
+          .join(",");
         await db.Execute(
           companyname,
-          `INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
-           VALUES ('${LastInOutNo}', '${item.LastSize}', ${Number(item.LastSum || 0)}, 'Y', '${userID}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')`,
+          `INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo) VALUES ${detailValues}`,
         );
       }
 
@@ -1671,11 +2065,7 @@ exports.quickScanBorrow = async (companyname, payload) => {
         totalBills: createdBills.length,
         bills: createdBills,
       },
-      invalidEPC: {
-        notFoundEPC,
-        outEPC,
-        lostEPC,
-      },
+      invalidEPC: { notFoundEPC, outEPC, lostEPC },
       message: "Scan nhanh thành công.",
     };
   } catch (error) {
@@ -1684,11 +2074,10 @@ exports.quickScanBorrow = async (companyname, payload) => {
       status: "Error",
       statusCode: 500,
       data: [],
-      message: "Lỗi khi scan nhanh phiếu mượn.",
+      message: "Lỗi khi scan nhanh phiếu mượn: " + error.message,
     };
   }
 };
-
 exports.getRFIDPhom = async (companyname, payload) => {
   try {
     const results = await db.Execute(
@@ -1887,49 +2276,190 @@ WHERE ldb.RFID = '${payload.RFID}';
   }
 };
 
-exports.submitReturnPhom = async (companyname, payload) => {
-  console.log("DEBUG payload:", JSON.stringify(payload));
+// exports.submitReturnPhom = async (companyname, payload) => {
+//   console.log("DEBUG payload:", JSON.stringify(payload));
 
-  // 1. Sinh số Return mới
-  const LastInOutNo = await db.Execute(
-    companyname,
-    `EXEC sp_GenerateLastInOutNo`,
+//   // 1. Sinh số Return mới
+//   const LastInOutNo = await db.Execute(
+//     companyname,
+//     `EXEC sp_GenerateLastInOutNo`,
+//   );
+//   const NewLastInOutNo = LastInOutNo.jsonArray[0].NewLastInOutNo;
+
+//   try {
+//     const resultsInsert = [];
+
+//     for (const RFID of payload.RFID_LIST) {
+//   // insert return
+//   await db.Execute(
+//     companyname,
+//     `
+//     INSERT INTO Details_Last_Scan_Return
+//         (ID_Return, RFID, ScanDate, YN, DepID)
+//     VALUES
+//         ('${NewLastInOutNo}', '${RFID}', GETDATE(), -1, '${payload.DepID}')
+//     `
+//   );
+
+//   // Update binding
+//   await db.Execute(
+//     companyname,
+//     `
+//     UPDATE Last_Data_Binding
+//     SET isOut = 0
+//     WHERE RFID = '${RFID}'
+//     `
+//   );
+
+//   // Trả kết quả cho API
+//   resultsInsert.push({
+//     RFID,
+//     Status: "Returned",
+//   });
+// }
+
+//     // 5. Gom dữ liệu chi tiết Last
+//     const DataLastInOut = await db.Execute(
+//       companyname,
+//       `SELECT
+//           ldb.LastMatNo,
+//           ldb.LastSize,
+//           COUNT(*) as lastsum,
+//           COUNT(*) * 0.5 AS LastQty
+//         FROM Details_Last_Scan_Return dlsr
+//         JOIN Last_Data_Binding ldb ON dlsr.RFID = ldb.RFID
+//         WHERE dlsr.ID_Return='${NewLastInOutNo}'
+//         GROUP BY ldb.LastMatNo, ldb.LastSize;`,
+//     );
+
+//     const newDetaLastInOut = DataLastInOut.jsonArray;
+
+//     // 6. Insert LastInOut_M
+//     await db.Execute(
+//       companyname,
+//       `INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
+//        VALUES ('${NewLastInOutNo}', ${parseFloat(payload.RFID_LIST.length)}, '${
+//          payload.Userid
+//        }', GETDATE(), 'Y', '${newDetaLastInOut[0].LastMatNo}')`,
+//     );
+
+//     // 7. Insert LastInOut_A
+//     await db.Execute(
+//       companyname,
+//       `INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
+//        VALUES ('${NewLastInOutNo}', GETDATE(), 'Return', 'BorrowReturn', '${payload.DepID}', NULL, 'Y', '${payload.Userid}', GETDATE(), NULL, NULL)`,
+//     );
+
+//     // 8. Insert LastInOut_D
+//     for (const item of newDetaLastInOut) {
+//       await db.Execute(
+//         companyname,
+//         `INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
+//          VALUES ('${NewLastInOutNo}', '${item.LastSize}', ${item.LastQty}, 'Y', '${payload.Userid}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')`,
+//       );
+//     }
+
+//     return {
+//       status: "Success",
+//       statusCode: 200,
+//       message: "Xử lí thành công đơn trả. Tổng số phom trả: " + payload.RFID_LIST.length,
+//       data: resultsInsert,
+//     };
+//   } catch (error) {
+//     console.error("Lỗi khi xử lý return bill:", error);
+//     return {
+//       status: "Error",
+//       statusCode: 500,
+//       message: "Lỗi khi xử lý return bill",
+//       data: [],
+//     };
+//   }
+// };
+exports.submitReturnPhom = async (companyname, payload) => {
+  console.log(
+    "DEBUG payload return:",
+    JSON.stringify({
+      ...payload,
+      RFID_LIST: `Array(${payload.RFID_LIST?.length})`,
+    }),
   );
-  const NewLastInOutNo = LastInOutNo.jsonArray[0].NewLastInOutNo;
 
   try {
-    const resultsInsert = [];
+    const rfidListRaw = payload.RFID_LIST || [];
+    const depID = payload.DepID || "";
+    const userID = payload.Userid || "SYSTEM";
 
-    for (const RFID of payload.RFID_LIST) {
-  // insert return
-  await db.Execute(
-    companyname,
-    `
-    INSERT INTO Details_Last_Scan_Return
-        (ID_Return, RFID, ScanDate, YN, DepID)
-    VALUES
-        ('${NewLastInOutNo}', '${RFID}', GETDATE(), -1, '${payload.DepID}')
-    `
-  );
+    // 1. Kiểm tra đầu vào an toàn
+    if (
+      !companyname ||
+      !Array.isArray(rfidListRaw) ||
+      rfidListRaw.length === 0
+    ) {
+      return {
+        status: "Error",
+        statusCode: 400,
+        message: "Danh sách RFID trả về trống hoặc thiếu thông tin.",
+        data: [],
+      };
+    }
 
-  // Update binding
-  await db.Execute(
-    companyname,
-    `
-    UPDATE Last_Data_Binding
-    SET isOut = 0
-    WHERE RFID = '${RFID}'
-    `
-  );
+    // Lọc trùng và làm sạch RFID (chống lỗi SQL Injection nếu mã có chứa dấu nháy đơn)
+    const rfidList = [
+      ...new Set(
+        rfidListRaw
+          .map((r) => String(r).trim().replace(/'/g, "''"))
+          .filter(Boolean),
+      ),
+    ];
 
-  // Trả kết quả cho API
-  resultsInsert.push({
-    RFID,
-    Status: "Returned",
-  });
-}
+    // 2. Sinh số Return mới
+    const LastInOutNoData = await db.Execute(
+      companyname,
+      `EXEC sp_GenerateLastInOutNo`,
+    );
+    const NewLastInOutNo = LastInOutNoData?.jsonArray?.[0]?.NewLastInOutNo;
 
-    // 5. Gom dữ liệu chi tiết Last
+    if (!NewLastInOutNo) {
+      throw new Error("Không thể tạo được mã Return LastInOutNo mới từ DB.");
+    }
+
+    // -------------------------------------------------------------
+    // TỐI ƯU 1: BULK INSERT & BULK UPDATE (Xử lý 500 mã 1 lúc)
+    // Thay vì chạy For vòng lặp từng mã, ta gộp lại thành 1 câu SQL
+    // -------------------------------------------------------------
+    const chunkSize = 500;
+    for (let i = 0; i < rfidList.length; i += chunkSize) {
+      const chunk = rfidList.slice(i, i + chunkSize);
+
+      // Bulk Insert: Trả về 1 mảng các câu VALUES (...), (...), (...)
+      const insertValues = chunk
+        .map(
+          (rfid) =>
+            `('${NewLastInOutNo}', '${rfid}', GETDATE(), -1, '${depID}')`,
+        )
+        .join(",");
+      await db.Execute(
+        companyname,
+        `INSERT INTO Details_Last_Scan_Return (ID_Return, RFID, ScanDate, YN, DepID) VALUES ${insertValues}`,
+      );
+
+      // Bulk Update: Update 1 lượt tất cả RFID bằng IN (...)
+      const rfidInClause = chunk.map((rfid) => `'${rfid}'`).join(",");
+      await db.Execute(
+        companyname,
+        `UPDATE Last_Data_Binding SET isOut = 0 WHERE RFID IN (${rfidInClause})`,
+      );
+    }
+
+    // Tạo mảng kết quả trả về cho App (Không cần For)
+    const resultsInsert = rfidList.map((rfid) => ({
+      RFID: rfid,
+      Status: "Returned",
+    }));
+
+    // -------------------------------------------------------------
+    // 3. Gom dữ liệu chi tiết Last
+    // -------------------------------------------------------------
     const DataLastInOut = await db.Execute(
       companyname,
       `SELECT 
@@ -1943,37 +2473,53 @@ exports.submitReturnPhom = async (companyname, payload) => {
         GROUP BY ldb.LastMatNo, ldb.LastSize;`,
     );
 
-    const newDetaLastInOut = DataLastInOut.jsonArray;
+    const newDetaLastInOut = DataLastInOut?.jsonArray || [];
 
-    // 6. Insert LastInOut_M
+    if (newDetaLastInOut.length === 0) {
+      throw new Error(
+        "Không tìm thấy dữ liệu nhóm chi tiết phom sau khi Insert. Vui lòng kiểm tra lại RFID có tồn tại trong Binding không.",
+      );
+    }
+
+    // Lấy mã MatNo đầu tiên cho Master (Theo đúng logic cũ của bạn)
+    const firstMatNo = newDetaLastInOut[0].LastMatNo;
+
+    // 4. Insert Master & Action
     await db.Execute(
       companyname,
       `INSERT INTO LastInOut_M (LastInOutNo, LastInOutQty, CreID, CreDate, YN, LastMatNo)
-       VALUES ('${NewLastInOutNo}', ${parseFloat(payload.RFID_LIST.length)}, '${
-         payload.Userid
-       }', GETDATE(), 'Y', '${newDetaLastInOut[0].LastMatNo}')`,
+       VALUES ('${NewLastInOutNo}', ${parseFloat(rfidList.length)}, '${userID}', GETDATE(), 'Y', '${firstMatNo}')`,
     );
 
-    // 7. Insert LastInOut_A
     await db.Execute(
       companyname,
       `INSERT INTO LastInOut_A (LastInOutNo, LastInOutDate, LastInOutType, LastInOutItem, LastLocation, Printed, YN, CreID, CreDate, CfmID, CfmDate)
-       VALUES ('${NewLastInOutNo}', GETDATE(), 'Return', 'BorrowReturn', '${payload.DepID}', NULL, 'Y', '${payload.Userid}', GETDATE(), NULL, NULL)`,
+       VALUES ('${NewLastInOutNo}', GETDATE(), 'Return', 'BorrowReturn', '${depID}', NULL, 'Y', '${userID}', GETDATE(), NULL, NULL)`,
     );
 
-    // 8. Insert LastInOut_D
-    for (const item of newDetaLastInOut) {
+    // -------------------------------------------------------------
+    // TỐI ƯU 2: BULK INSERT CHO BẢNG LAST_INOUT_D
+    // Gộp vòng lặp For Insert của phần Chi tiết lại
+    // -------------------------------------------------------------
+    for (let i = 0; i < newDetaLastInOut.length; i += chunkSize) {
+      const chunkDetail = newDetaLastInOut.slice(i, i + chunkSize);
+      const detailValues = chunkDetail
+        .map(
+          (item) =>
+            `('${NewLastInOutNo}', '${item.LastSize}', ${item.LastQty}, 'Y', '${userID}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')`,
+        )
+        .join(",");
+
       await db.Execute(
         companyname,
-        `INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo)
-         VALUES ('${NewLastInOutNo}', '${item.LastSize}', ${item.LastQty}, 'Y', '${payload.Userid}', GETDATE(), 'ZZZZ', '${item.LastMatNo}')`,
+        `INSERT INTO LastInOut_D (LastInOutNo, LastSize, LastQty, YN, CreID, CreDate, Country, LastMatNo) VALUES ${detailValues}`,
       );
     }
 
     return {
       status: "Success",
       statusCode: 200,
-      message: "Xử lí thành công đơn trả. Tổng số phom trả: " + payload.RFID_LIST.length,
+      message: "Xử lí thành công đơn trả. Tổng số phom trả: " + rfidList.length,
       data: resultsInsert,
     };
   } catch (error) {
@@ -1981,12 +2527,11 @@ exports.submitReturnPhom = async (companyname, payload) => {
     return {
       status: "Error",
       statusCode: 500,
-      message: "Lỗi khi xử lý return bill",
+      message: "Lỗi khi xử lý return bill: " + error.message,
       data: [],
     };
   }
 };
-
 exports.confirmBorrowBill = async (companyname, payload) => {
   try {
     const results = await db.Execute(
